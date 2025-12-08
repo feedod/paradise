@@ -1,1 +1,1 @@
-# paradise
+# Paradise AI
