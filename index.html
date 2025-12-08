@@ -2,8 +2,8 @@
 <html lang="ru">
 <head>
 	<meta charset="utf-8">
-	<title>Anime Voice TMA</title>
-	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+	<title>Anime Voice Character TWA</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 	<style>
 		html, body {
@@ -13,205 +13,233 @@
 			height: 100%;
 			overflow: hidden;
 			background: black;
-			touch-action: none;
 			font-family: system-ui;
 		}
 	</style>
 
-	<!-- ✅ TELEGRAM MINI APPS SDK -->
+	<!-- ✅ ОФИЦИАЛЬНЫЙ TELEGRAM WEB APP SDK -->
 	<script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 
 <body>
 
 <script type="module">
-	import * as THREE from 'https://cdn.jsdelivr.net/npm/three@latest/build/three.module.js';
-	import { AsciiEffect } from 'https://cdn.jsdelivr.net/npm/three@latest/examples/jsm/effects/AsciiEffect.js';
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@latest/build/three.module.js';
+import { AsciiEffect } from 'https://cdn.jsdelivr.net/npm/three@latest/examples/jsm/effects/AsciiEffect.js';
 
-	// ==============================
-	// ✅ ПОЛНАЯ ИНИЦИАЛИЗАЦИЯ TMA
-	// ==============================
-	const tg = window.Telegram.WebApp;
 
-	tg.ready();          // ✅ обязательный вызов
-	tg.expand();         // ✅ разворачиваем на весь экран
-	tg.disableClosingConfirmation();
-	tg.setBackgroundColor("#000000");
-	tg.setHeaderColor("#000000");
+// ==============================
+// ✅ TELEGRAM WEB APP (TWA)
+// ==============================
 
-	console.log("TMA platform:", tg.platform);
-	console.log("TMA version:", tg.version);
+const tg = window.Telegram.WebApp;
+tg.ready();                 // обязательно
+tg.disableClosingConfirmation();
+tg.setBackgroundColor("#000000");
+tg.setHeaderColor("#000000");
 
-	// ==============================
-	// ✅ THREE.JS + ANIME
-	// ==============================
+// ❌ НЕ разворачиваем на весь экран:
+// tg.expand(); — специально НЕ используем
 
-	let camera, scene, renderer, effect;
-	let head, eyeL, eyeR, mouth;
-	let expression = "neutral";
+// ✅ Кнопка официально запрашивает микрофон
+tg.MainButton.setText("🎤 ВКЛЮЧИТЬ ГОЛОС");
+tg.MainButton.show();
 
-	init();
-	startVoiceAuto();   // ✅ СРАЗУ запускаем микрофон
+tg.MainButton.onClick(async () => {
+	await requestMic();
+	startRecognition();
+	tg.MainButton.hide();
+});
 
-	function init() {
 
-		camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 1, 1000);
-		camera.position.set(0, 40, 380);
+// ==============================
+// ✅ THREE.JS СЦЕНА
+// ==============================
 
-		scene = new THREE.Scene();
-		scene.background = new THREE.Color(0x000000);
+let camera, scene, renderer, effect;
+let head, eyeL, eyeR, mouth;
+let body, armL, armR, legL, legR;
 
-		const lightMain = new THREE.PointLight(0xffffff, 2.5);
-		lightMain.position.set(200, 300, 300);
-		scene.add(lightMain);
+let expression = "neutral";
 
-		scene.add(new THREE.AmbientLight(0x404040, 1.5));
+init();
+animate();
 
-		// ===== АНИМЕ ГОЛОВА =====
+function init() {
 
-		head = new THREE.Mesh(
-			new THREE.SphereGeometry(150, 40, 40),
-			new THREE.MeshPhongMaterial({ color: 0xffd1c1 })
-		);
-		scene.add(head);
+	camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 1500);
+	camera.position.set(0, 120, 600);
 
-		const hair = new THREE.Mesh(
-			new THREE.SphereGeometry(155, 40, 40, 0, Math.PI * 2, 0, Math.PI * 0.6),
-			new THREE.MeshPhongMaterial({ color: 0x151515 })
-		);
-		hair.position.y = 40;
-		scene.add(hair);
+	scene = new THREE.Scene();
+	scene.background = new THREE.Color(0x000000);
 
-		eyeL = new THREE.Mesh(
-			new THREE.SphereGeometry(26, 20, 20),
-			new THREE.MeshPhongMaterial({ color: 0x000000 })
-		);
-		eyeL.position.set(-48, 28, 120);
-		scene.add(eyeL);
+	scene.add(new THREE.AmbientLight(0x404040, 1.4));
 
-		eyeR = eyeL.clone();
-		eyeR.position.x = 48;
-		scene.add(eyeR);
+	const light = new THREE.PointLight(0xffffff, 2.5);
+	light.position.set(300, 400, 300);
+	scene.add(light);
 
-		mouth = new THREE.Mesh(
-			new THREE.TorusGeometry(22, 5, 16, 50, Math.PI),
-			new THREE.MeshPhongMaterial({ color: 0xcc2244 })
-		);
-		mouth.position.set(0, -46, 120);
-		mouth.rotation.x = Math.PI;
-		scene.add(mouth);
+	// =========================
+	// ✅ ПОЛНОЦЕННЫЙ ПЕРСОНАЖ
+	// =========================
 
-		renderer = new THREE.WebGLRenderer({ powerPreference: "high-performance" });
-		renderer.setSize(window.innerWidth, window.innerHeight);
-		renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+	// Голова
+	head = new THREE.Mesh(
+		new THREE.SphereGeometry(70, 32, 32),
+		new THREE.MeshPhongMaterial({ color: 0xffd1c1 })
+	);
+	head.position.y = 220;
+	scene.add(head);
 
-		effect = new AsciiEffect(renderer, ' .:-+*=%@#', { invert: true });
-		effect.setSize(window.innerWidth, window.innerHeight);
-		effect.domElement.style.color = 'white';
-		effect.domElement.style.backgroundColor = 'black';
+	// Волосы
+	const hair = new THREE.Mesh(
+		new THREE.SphereGeometry(74, 32, 32, 0, Math.PI * 2, 0, Math.PI * 0.6),
+		new THREE.MeshPhongMaterial({ color: 0x111111 })
+	);
+	hair.position.y = 250;
+	scene.add(hair);
 
-		document.body.appendChild(effect.domElement);
+	// Глаза
+	eyeL = new THREE.Mesh(new THREE.SphereGeometry(10, 16, 16), new THREE.MeshPhongMaterial({ color: 0x000000 }));
+	eyeR = eyeL.clone();
 
-		window.addEventListener('resize', onResize);
-		requestAnimationFrame(animate);
+	eyeL.position.set(-18, 230, 55);
+	eyeR.position.set(18, 230, 55);
+
+	scene.add(eyeL, eyeR);
+
+	// Рот
+	mouth = new THREE.Mesh(
+		new THREE.TorusGeometry(16, 4, 16, 40, Math.PI),
+		new THREE.MeshPhongMaterial({ color: 0xcc2244 })
+	);
+	mouth.position.set(0, 205, 58);
+	mouth.rotation.x = Math.PI;
+	scene.add(mouth);
+
+	// Тело
+	body = new THREE.Mesh(
+		new THREE.CylinderGeometry(45, 55, 140, 24),
+		new THREE.MeshPhongMaterial({ color: 0x8899ff })
+	);
+	body.position.y = 115;
+	scene.add(body);
+
+	// Руки
+	armL = new THREE.Mesh(new THREE.CylinderGeometry(10, 12, 100, 16), body.material);
+	armR = armL.clone();
+
+	armL.position.set(-70, 120, 0);
+	armR.position.set(70, 120, 0);
+
+	scene.add(armL, armR);
+
+	// Ноги
+	legL = new THREE.Mesh(new THREE.CylinderGeometry(14, 16, 100, 16), new THREE.MeshPhongMaterial({ color: 0x333333 }));
+	legR = legL.clone();
+
+	legL.position.set(-25, 20, 0);
+	legR.position.set(25, 20, 0);
+
+	scene.add(legL, legR);
+
+	// =========================
+
+	renderer = new THREE.WebGLRenderer({ powerPreference: "high-performance" });
+	renderer.setSize(window.innerWidth, window.innerHeight);
+	renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+	effect = new AsciiEffect(renderer, ' .:-+*=%@#', { invert: true });
+	effect.setSize(window.innerWidth, window.innerHeight);
+	effect.domElement.style.color = 'white';
+	effect.domElement.style.backgroundColor = 'black';
+
+	document.body.appendChild(effect.domElement);
+
+	window.addEventListener('resize', onResize);
+}
+
+function onResize() {
+	camera.aspect = window.innerWidth / window.innerHeight;
+	camera.updateProjectionMatrix();
+	renderer.setSize(window.innerWidth, window.innerHeight);
+	effect.setSize(window.innerWidth, window.innerHeight);
+}
+
+
+// ==============================
+// ✅ ЭМОЦИИ
+// ==============================
+
+function setSmile() {
+	expression = "smile";
+	mouth.scale.x = 1.3;
+	mouth.scale.y = 1;
+}
+
+function setNeutral() {
+	expression = "neutral";
+	mouth.scale.x = 1;
+	mouth.scale.y = 0.6;
+}
+
+function animate(time = 0) {
+	const blink = Math.abs(Math.sin(time * 0.002)) * 0.6 + 0.4;
+	eyeL.scale.y = blink;
+	eyeR.scale.y = blink;
+
+	if (expression === "smile") {
+		mouth.rotation.z = Math.sin(time * 0.004) * 0.1;
 	}
 
-	function onResize() {
-		camera.aspect = window.innerWidth / window.innerHeight;
-		camera.updateProjectionMatrix();
-		renderer.setSize(window.innerWidth, window.innerHeight);
-		effect.setSize(window.innerWidth, window.innerHeight);
-	}
+	effect.render(scene, camera);
+	requestAnimationFrame(animate);
+}
 
-	// ==============================
-	// ✅ ЭМОЦИИ
-	// ==============================
 
-	function setSmile() {
-		expression = "smile";
-		mouth.scale.x = 1.2;
-		mouth.scale.y = 1;
-	}
+// ==============================
+// ✅ ГОЛОС ЧЕРЕЗ TWA
+// ==============================
 
-	function setNeutral() {
-		expression = "neutral";
-		mouth.scale.x = 1;
-		mouth.scale.y = 0.6;
-	}
+let recognition;
 
-	function animate(time) {
-		const blink = Math.abs(Math.sin(time * 0.002)) * 0.6 + 0.4;
-		eyeL.scale.y = blink;
-		eyeR.scale.y = blink;
+async function requestMic() {
+	await navigator.mediaDevices.getUserMedia({ audio: true });
+}
 
-		if (expression === "smile") {
-			mouth.rotation.z = Math.sin(time * 0.003) * 0.1;
+function startRecognition() {
+
+	const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+	if (!SpeechRecognition) return;
+
+	recognition = new SpeechRecognition();
+	recognition.lang = "ru-RU";
+	recognition.continuous = true;
+
+	recognition.onresult = (e) => {
+		const text = e.results[e.results.length - 1][0].transcript.toLowerCase();
+
+		if (text.includes("привет")) {
+			setSmile();
+			speak("Привет");
 		}
+	};
 
-		effect.render(scene, camera);
-		requestAnimationFrame(animate);
-	}
+	recognition.onerror = () => restart();
+	recognition.onend = () => restart();
 
-	// ==============================
-	// ✅ МИКРОФОН + РАСПОЗНАВАНИЕ + ОЗВУЧКА
-	// ==============================
+	recognition.start();
+}
 
-	let recognition;
+function restart() {
+	try { recognition.start(); } catch {}
+}
 
-	async function startVoiceAuto() {
-
-		try {
-			// ✅ Запрос разрешения СРАЗУ
-			await navigator.mediaDevices.getUserMedia({ audio: true });
-		} catch (e) {
-			console.warn("Микрофон заблокирован системой");
-			return;
-		}
-
-		const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-		if (!SpeechRecognition) {
-			console.warn("Speech API не поддерживается");
-			return;
-		}
-
-		recognition = new SpeechRecognition();
-		recognition.lang = "ru-RU";
-		recognition.continuous = true;
-		recognition.interimResults = false;
-
-		recognition.onresult = (event) => {
-			const text = event.results[event.results.length - 1][0].transcript.toLowerCase();
-			console.log("Голос:", text);
-
-			if (text.includes("привет")) {
-				setSmile();
-				speak("Привет");
-			}
-		};
-
-		recognition.onerror = () => {
-			restartRecognition();
-		};
-
-		recognition.onend = () => {
-			restartRecognition();
-		};
-
-		recognition.start();
-	}
-
-	function restartRecognition() {
-		try {
-			recognition.start();
-		} catch (e) {}
-	}
-
-	function speak(text) {
-		const utterance = new SpeechSynthesisUtterance(text);
-		utterance.lang = "ru-RU";
-		speechSynthesis.speak(utterance);
-	}
+function speak(text) {
+	const msg = new SpeechSynthesisUtterance(text);
+	msg.lang = "ru-RU";
+	speechSynthesis.speak(msg);
+}
 
 </script>
 
