@@ -1,771 +1,219 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
 	<meta charset="utf-8">
-	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-	<title>ASCII Anime Girl</title>
+	<title>Anime Voice TMA</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
 	<style>
-		* {
+		html, body {
 			margin: 0;
 			padding: 0;
-			box-sizing: border-box;
-		}
-
-		body {
+			width: 100%;
+			height: 100%;
 			overflow: hidden;
-			font-family: 'Courier New', monospace;
-			background: #000;
-		}
-
-		canvas {
-			display: block;
+			background: black;
+			touch-action: none;
+			font-family: system-ui;
 		}
 	</style>
+
+	<!-- ✅ TELEGRAM MINI APPS SDK -->
+	<script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
+
 <body>
-	<script type="importmap">
-		{
-			"imports": {
-				"three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
-				"three/addons/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/"
-			}
-		}
-	</script>
 
-	<script type="module">
-		import * as THREE from 'three';
-		import { AsciiEffect } from 'three/addons/effects/AsciiEffect.js';
-		import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-
-		class AnimeGirl {
-			constructor() {
-				this.scene = null;
-				this.camera = null;
-				this.renderer = null;
-				this.effect = null;
-				this.controls = null;
-				this.character = null;
-				this.emotionState = 'happy';
-				this.animationId = null;
-
-				this.init();
-				this.createCharacter();
-				this.setupEventListeners();
-				this.animate();
-			}
-
-			init() {
-				this.scene = new THREE.Scene();
-				this.scene.background = new THREE.Color(0x000000);
-
-				this.camera = new THREE.PerspectiveCamera(
-					45,
-					window.innerWidth / window.innerHeight,
-					1,
-					2000
-				);
-				this.camera.position.set(0, 0, 500);
-
-				this.setupLighting();
-
-				this.renderer = new THREE.WebGLRenderer({ 
-					antialias: true,
-					alpha: false
-				});
-				this.renderer.setSize(window.innerWidth, window.innerHeight);
-				this.renderer.setPixelRatio(window.devicePixelRatio);
-
-				this.effect = new AsciiEffect(this.renderer, ' .:-=+*#%@', { 
-					invert: true,
-					resolution: 0.15
-				});
-				this.effect.setSize(window.innerWidth, window.innerHeight);
-				this.effect.domElement.style.color = '#ffb3d9';
-				this.effect.domElement.style.backgroundColor = '#000000';
-
-				document.body.appendChild(this.effect.domElement);
-
-				this.controls = new OrbitControls(this.camera, this.effect.domElement);
-				this.controls.enableDamping = true;
-				this.controls.dampingFactor = 0.05;
-				this.controls.enableZoom = true;
-				this.controls.enablePan = false;
-				this.controls.target.set(0, 0, 0);
-				this.controls.update();
-			}
-
-			setupLighting() {
-				const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
-				this.scene.add(ambientLight);
-
-				const keyLight = new THREE.DirectionalLight(0xffb3d9, 1.5);
-				keyLight.position.set(200, 200, 300);
-				this.scene.add(keyLight);
-
-				const fillLight = new THREE.DirectionalLight(0xb3d9ff, 1);
-				fillLight.position.set(-200, 100, 200);
-				this.scene.add(fillLight);
-
-				const rimLight = new THREE.DirectionalLight(0xffd9b3, 0.8);
-				rimLight.position.set(0, -100, -200);
-				this.scene.add(rimLight);
-			}
-
-			createCharacter() {
-				this.character = new THREE.Group();
-
-				const skinMaterial = new THREE.MeshPhongMaterial({ 
-					color: 0xffe0d0,
-					shininess: 25,
-					flatShading: false
-				});
-
-				const hairMaterial = new THREE.MeshPhongMaterial({ 
-					color: 0xff69b4,
-					shininess: 90
-				});
-
-				this.createHead(skinMaterial);
-				this.createEyes();
-				this.createNose(skinMaterial);
-				this.createMouth('happy');
-				this.createEyebrows();
-				this.createBlush();
-				this.createEars(skinMaterial);
-				this.createHair(hairMaterial);
-				this.createAccessories();
-				this.createNeck(skinMaterial);
-
-				this.scene.add(this.character);
-			}
-
-			createHead(material) {
-				const headGroup = new THREE.Group();
-
-				const mainHead = new THREE.Mesh(
-					new THREE.SphereGeometry(55, 64, 64),
-					material
-				);
-				mainHead.scale.set(1, 1.15, 0.85);
-				headGroup.add(mainHead);
-
-				const lowerFace = new THREE.Mesh(
-					new THREE.SphereGeometry(40, 32, 32),
-					material
-				);
-				lowerFace.position.set(0, -35, 15);
-				lowerFace.scale.set(0.85, 0.7, 0.95);
-				headGroup.add(lowerFace);
-
-				const chin = new THREE.Mesh(
-					new THREE.SphereGeometry(18, 32, 32),
-					material
-				);
-				chin.position.set(0, -55, 28);
-				chin.scale.set(0.6, 0.55, 0.85);
-				headGroup.add(chin);
-
-				this.character.add(headGroup);
-			}
-
-			createEyes() {
-				const eyeGroup = new THREE.Group();
-				eyeGroup.name = 'eyes';
-
-				const eyeWhiteMaterial = new THREE.MeshPhongMaterial({ 
-					color: 0xffffff,
-					shininess: 120
-				});
-
-				const irisMaterial = new THREE.MeshPhongMaterial({ 
-					color: 0x6b4ce8,
-					shininess: 140
-				});
-
-				const pupilMaterial = new THREE.MeshPhongMaterial({ 
-					color: 0x1a0a3e,
-					shininess: 100
-				});
-
-				const highlightMaterial = new THREE.MeshBasicMaterial({ 
-					color: 0xffffff
-				});
-
-				const positions = [
-					{ x: -20, y: 15 },
-					{ x: 20, y: 15 }
-				];
-
-				positions.forEach(pos => {
-					const eyeWhite = new THREE.Mesh(
-						new THREE.SphereGeometry(13, 32, 32),
-						eyeWhiteMaterial
-					);
-					eyeWhite.position.set(pos.x, pos.y, 45);
-					eyeWhite.scale.set(1.15, 1.35, 0.6);
-					eyeGroup.add(eyeWhite);
-
-					const iris = new THREE.Mesh(
-						new THREE.SphereGeometry(9, 32, 32),
-						irisMaterial
-					);
-					iris.position.set(pos.x, pos.y, 55);
-					iris.scale.set(1, 1.15, 0.4);
-					eyeGroup.add(iris);
-
-					const innerIris = new THREE.Mesh(
-						new THREE.SphereGeometry(7, 32, 32),
-						new THREE.MeshPhongMaterial({ 
-							color: 0x8b6ce8,
-							shininess: 140
-						})
-					);
-					innerIris.position.set(pos.x, pos.y, 56);
-					innerIris.scale.set(0.9, 1, 0.4);
-					eyeGroup.add(innerIris);
-
-					const pupil = new THREE.Mesh(
-						new THREE.SphereGeometry(4.5, 32, 32),
-						pupilMaterial
-					);
-					pupil.position.set(pos.x, pos.y + 1, 58);
-					eyeGroup.add(pupil);
-
-					const highlight1 = new THREE.Mesh(
-						new THREE.SphereGeometry(3, 16, 16),
-						highlightMaterial
-					);
-					highlight1.position.set(pos.x - 3, pos.y + 5, 59);
-					eyeGroup.add(highlight1);
-
-					const highlight2 = new THREE.Mesh(
-						new THREE.SphereGeometry(2, 16, 16),
-						highlightMaterial
-					);
-					highlight2.position.set(pos.x + 3, pos.y - 3, 59);
-					eyeGroup.add(highlight2);
-
-					const highlight3 = new THREE.Mesh(
-						new THREE.SphereGeometry(1.5, 16, 16),
-						highlightMaterial
-					);
-					highlight3.position.set(pos.x + 1, pos.y + 7, 59);
-					eyeGroup.add(highlight3);
-
-					const upperLash = new THREE.Mesh(
-						new THREE.TorusGeometry(13, 0.8, 8, 32, Math.PI),
-						new THREE.MeshPhongMaterial({ 
-							color: 0x000000,
-							shininess: 100
-						})
-					);
-					upperLash.position.set(pos.x, pos.y + 13, 45);
-					upperLash.rotation.x = Math.PI;
-					upperLash.scale.set(1.15, 1, 0.6);
-					eyeGroup.add(upperLash);
-
-					const lowerLash = new THREE.Mesh(
-						new THREE.TorusGeometry(13, 0.5, 8, 32, Math.PI),
-						new THREE.MeshPhongMaterial({ 
-							color: 0x000000,
-							shininess: 100
-						})
-					);
-					lowerLash.position.set(pos.x, pos.y - 13, 45);
-					lowerLash.scale.set(1.15, 1, 0.6);
-					eyeGroup.add(lowerLash);
-				});
-
-				this.character.add(eyeGroup);
-			}
-
-			createNose(material) {
-				const noseGroup = new THREE.Group();
-
-				const noseTip = new THREE.Mesh(
-					new THREE.SphereGeometry(3, 32, 32),
-					new THREE.MeshPhongMaterial({ 
-						color: 0xffc9b3,
-						shininess: 15
-					})
-				);
-				noseTip.position.set(0, -5, 58);
-				noseTip.scale.set(0.9, 0.7, 1.2);
-				noseGroup.add(noseTip);
-
-				this.character.add(noseGroup);
-			}
-
-			createMouth(emotion) {
-				const existingMouth = this.character.getObjectByName('mouth');
-				if (existingMouth) {
-					this.character.remove(existingMouth);
-				}
-
-				const mouthGroup = new THREE.Group();
-				mouthGroup.name = 'mouth';
-
-				const lipMaterial = new THREE.MeshPhongMaterial({ 
-					color: 0xff6b9d,
-					shininess: 50
-				});
-
-				if (emotion === 'happy') {
-					const smile = new THREE.Mesh(
-						new THREE.TorusGeometry(12, 2, 16, 32, Math.PI),
-						lipMaterial
-					);
-					smile.position.set(0, -25, 52);
-					smile.rotation.x = Math.PI;
-					smile.scale.set(1.1, 0.9, 0.8);
-					mouthGroup.add(smile);
-
-					const upperLip = new THREE.Mesh(
-						new THREE.SphereGeometry(12, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2),
-						lipMaterial
-					);
-					upperLip.position.set(0, -23, 52);
-					upperLip.rotation.x = Math.PI;
-					upperLip.scale.set(1.1, 0.4, 0.8);
-					mouthGroup.add(upperLip);
-
-					const lowerLip = new THREE.Mesh(
-						new THREE.SphereGeometry(12, 32, 16, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2),
-						lipMaterial
-					);
-					lowerLip.position.set(0, -27, 52);
-					lowerLip.scale.set(1.1, 0.5, 0.8);
-					mouthGroup.add(lowerLip);
-				} else if (emotion === 'sad') {
-					const frown = new THREE.Mesh(
-						new THREE.TorusGeometry(10, 1.8, 16, 32, Math.PI),
-						lipMaterial
-					);
-					frown.position.set(0, -20, 52);
-					frown.rotation.x = 0;
-					frown.rotation.z = Math.PI;
-					frown.scale.set(1, 0.8, 0.8);
-					mouthGroup.add(frown);
-
-					const upperLip = new THREE.Mesh(
-						new THREE.SphereGeometry(10, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2),
-						lipMaterial
-					);
-					upperLip.position.set(0, -22, 52);
-					upperLip.rotation.x = Math.PI;
-					upperLip.scale.set(1, 0.4, 0.8);
-					mouthGroup.add(upperLip);
-
-					const lowerLip = new THREE.Mesh(
-						new THREE.SphereGeometry(10, 32, 16, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2),
-						lipMaterial
-					);
-					lowerLip.position.set(0, -26, 52);
-					lowerLip.scale.set(1, 0.4, 0.8);
-					mouthGroup.add(lowerLip);
-
-					const tearLeft = new THREE.Mesh(
-						new THREE.SphereGeometry(2, 16, 16),
-						new THREE.MeshPhongMaterial({ 
-							color: 0x88ccff,
-							transparent: true,
-							opacity: 0.7,
-							shininess: 100
-						})
-					);
-					tearLeft.position.set(-20, 5, 58);
-					tearLeft.scale.set(0.7, 1.5, 0.7);
-					mouthGroup.add(tearLeft);
-
-					const tearRight = new THREE.Mesh(
-						new THREE.SphereGeometry(2, 16, 16),
-						new THREE.MeshPhongMaterial({ 
-							color: 0x88ccff,
-							transparent: true,
-							opacity: 0.7,
-							shininess: 100
-						})
-					);
-					tearRight.position.set(20, 5, 58);
-					tearRight.scale.set(0.7, 1.5, 0.7);
-					mouthGroup.add(tearRight);
-				}
-
-				this.character.add(mouthGroup);
-			}
-
-			createEyebrows() {
-				const browGroup = new THREE.Group();
-				browGroup.name = 'eyebrows';
-
-				const browMaterial = new THREE.MeshPhongMaterial({ 
-					color: 0xd1488c,
-					shininess: 60
-				});
-
-				const leftBrow = new THREE.Mesh(
-					new THREE.CapsuleGeometry(1, 14, 8, 16),
-					browMaterial
-				);
-				leftBrow.position.set(-20, 30, 50);
-				leftBrow.rotation.z = -0.15;
-				leftBrow.rotation.y = 0.1;
-				browGroup.add(leftBrow);
-
-				const rightBrow = new THREE.Mesh(
-					new THREE.CapsuleGeometry(1, 14, 8, 16),
-					browMaterial
-				);
-				rightBrow.position.set(20, 30, 50);
-				rightBrow.rotation.z = 0.15;
-				rightBrow.rotation.y = -0.1;
-				browGroup.add(rightBrow);
-
-				this.character.add(browGroup);
-			}
-
-			createBlush() {
-				const blushMaterial = new THREE.MeshPhongMaterial({ 
-					color: 0xff9999,
-					transparent: true,
-					opacity: 0.5,
-					shininess: 10
-				});
-
-				const leftBlush = new THREE.Mesh(
-					new THREE.SphereGeometry(8, 32, 32),
-					blushMaterial
-				);
-				leftBlush.position.set(-35, -8, 48);
-				leftBlush.scale.set(1.3, 0.9, 0.3);
-				this.character.add(leftBlush);
-
-				const rightBlush = new THREE.Mesh(
-					new THREE.SphereGeometry(8, 32, 32),
-					blushMaterial
-				);
-				rightBlush.position.set(35, -8, 48);
-				rightBlush.scale.set(1.3, 0.9, 0.3);
-				this.character.add(rightBlush);
-			}
-
-			createEars(material) {
-				const earGroup = new THREE.Group();
-
-				const positions = [
-					{ x: -50, rotation: -0.15 },
-					{ x: 50, rotation: 0.15 }
-				];
-
-				positions.forEach(pos => {
-					const ear = new THREE.Mesh(
-						new THREE.SphereGeometry(8, 32, 32),
-						material
-					);
-					ear.position.set(pos.x, -2, 8);
-					ear.scale.set(0.8, 1.3, 0.5);
-					ear.rotation.y = pos.rotation;
-					earGroup.add(ear);
-
-					const innerEar = new THREE.Mesh(
-						new THREE.SphereGeometry(4, 16, 16),
-						new THREE.MeshPhongMaterial({ 
-							color: 0xffb3a3,
-							shininess: 10
-						})
-					);
-					innerEar.position.set(pos.x * 1.03, -2, 10);
-					innerEar.scale.set(0.7, 1, 0.4);
-					earGroup.add(innerEar);
-				});
-
-				this.character.add(earGroup);
-			}
-
-			createHair(material) {
-				const hairGroup = new THREE.Group();
-
-				const mainHair = new THREE.Mesh(
-					new THREE.SphereGeometry(60, 32, 32),
-					material
-				);
-				mainHair.position.set(0, 10, -8);
-				mainHair.scale.set(1.05, 1.15, 1.05);
-				hairGroup.add(mainHair);
-
-				const backHair = new THREE.Mesh(
-					new THREE.SphereGeometry(58, 32, 32),
-					material
-				);
-				backHair.position.set(0, -5, -45);
-				backHair.scale.set(1.15, 1.4, 0.9);
-				hairGroup.add(backHair);
-
-				for (let i = 0; i < 11; i++) {
-					const strand = new THREE.Mesh(
-						new THREE.ConeGeometry(3.5, 32, 12),
-						material
-					);
-					const xPos = (i - 5) * 8;
-					const randomOffset = (Math.random() - 0.5) * 0.1;
-					strand.position.set(xPos, 45, 35);
-					strand.rotation.x = 0.3 + randomOffset;
-					strand.rotation.z = randomOffset * 2;
-					hairGroup.add(strand);
-				}
-
-				const ahoge = new THREE.Mesh(
-					new THREE.CapsuleGeometry(1.5, 25, 8, 16),
-					material
-				);
-				ahoge.position.set(5, 65, 10);
-				ahoge.rotation.z = -0.3;
-				ahoge.rotation.x = 0.2;
-				hairGroup.add(ahoge);
-
-				const ahogeTop = new THREE.Mesh(
-					new THREE.SphereGeometry(2.5, 16, 16),
-					material
-				);
-				ahogeTop.position.set(0, 78, 15);
-				hairGroup.add(ahogeTop);
-
-				const ponytailGeometry = new THREE.SphereGeometry(22, 32, 32);
-				
-				const leftPonytail = new THREE.Mesh(ponytailGeometry, material);
-				leftPonytail.position.set(-65, 15, -10);
-				leftPonytail.scale.set(0.9, 1.3, 0.9);
-				hairGroup.add(leftPonytail);
-
-				const rightPonytail = new THREE.Mesh(ponytailGeometry, material);
-				rightPonytail.position.set(65, 15, -10);
-				rightPonytail.scale.set(0.9, 1.3, 0.9);
-				hairGroup.add(rightPonytail);
-
-				const leftPonytailEnd = new THREE.Mesh(
-					new THREE.ConeGeometry(15, 35, 16),
-					material
-				);
-				leftPonytailEnd.position.set(-68, -10, -12);
-				leftPonytailEnd.rotation.z = -0.2;
-				hairGroup.add(leftPonytailEnd);
-
-				const rightPonytailEnd = new THREE.Mesh(
-					new THREE.ConeGeometry(15, 35, 16),
-					material);
-				rightPonytailEnd.position.set(68, -10, -12);
-				rightPonytailEnd.rotation.z = 0.2;
-				hairGroup.add(rightPonytailEnd);
-
-				this.character.add(hairGroup);
-			}
-
-			createAccessories() {
-				const accessoryGroup = new THREE.Group();
-
-				const ribbonMaterial = new THREE.MeshPhongMaterial({ 
-					color: 0xffd700,
-					shininess: 100
-				});
-
-				const leftRibbon = new THREE.Mesh(
-					new THREE.TorusGeometry(10, 2.5, 16, 32),
-					ribbonMaterial
-				);
-				leftRibbon.position.set(-65, 28, -10);
-				leftRibbon.rotation.x = Math.PI / 2;
-				accessoryGroup.add(leftRibbon);
-
-				const rightRibbon = new THREE.Mesh(
-					new THREE.TorusGeometry(10, 2.5, 16, 32),
-					ribbonMaterial
-				);
-				rightRibbon.position.set(65, 28, -10);
-				rightRibbon.rotation.x = Math.PI / 2;
-				accessoryGroup.add(rightRibbon);
-
-				const leftRibbonTail1 = new THREE.Mesh(
-					new THREE.ConeGeometry(4, 15, 8),
-					ribbonMaterial
-				);
-				leftRibbonTail1.position.set(-70, 18, -8);
-				leftRibbonTail1.rotation.z = -0.3;
-				accessoryGroup.add(leftRibbonTail1);
-
-				const leftRibbonTail2 = new THREE.Mesh(
-					new THREE.ConeGeometry(4, 15, 8),
-					ribbonMaterial
-				);
-				leftRibbonTail2.position.set(-60, 18, -8);
-				leftRibbonTail2.rotation.z = 0.3;
-				accessoryGroup.add(leftRibbonTail2);
-
-				const rightRibbonTail1 = new THREE.Mesh(
-					new THREE.ConeGeometry(4, 15, 8),
-					ribbonMaterial
-				);
-				rightRibbonTail1.position.set(70, 18, -8);
-				rightRibbonTail1.rotation.z = 0.3;
-				accessoryGroup.add(rightRibbonTail1);
-
-				const rightRibbonTail2 = new THREE.Mesh(
-					new THREE.ConeGeometry(4, 15, 8),
-					ribbonMaterial
-				);
-				rightRibbonTail2.position.set(60, 18, -8);
-				rightRibbonTail2.rotation.z = -0.3;
-				accessoryGroup.add(rightRibbonTail2);
-
-				const hairpinMaterial = new THREE.MeshPhongMaterial({ 
-					color: 0xff1493,
-					shininess: 120
-				});
-
-				const heartShape = new THREE.Shape();
-				heartShape.moveTo(0, 0);
-				heartShape.bezierCurveTo(0, -0.5, -1.5, -0.5, -1.5, 0.5);
-				heartShape.bezierCurveTo(-1.5, 1.5, 0, 2.5, 0, 3.5);
-				heartShape.bezierCurveTo(0, 2.5, 1.5, 1.5, 1.5, 0.5);
-				heartShape.bezierCurveTo(1.5, -0.5, 0, -0.5, 0, 0);
-
-				const heartGeometry = new THREE.ExtrudeGeometry(heartShape, {
-					depth: 1.5,
-					bevelEnabled: true,
-					bevelThickness: 0.3,
-					bevelSize: 0.3,
-					bevelSegments: 4
-				});
-
-				const hairpin = new THREE.Mesh(heartGeometry, hairpinMaterial);
-				hairpin.position.set(25, 40, 35);
-				hairpin.rotation.x = 0.3;
-				hairpin.scale.set(2, 2, 1);
-				accessoryGroup.add(hairpin);
-
-				const chokerMaterial = new THREE.MeshPhongMaterial({ 
-					color: 0xff69b4,
-					shininess: 80
-				});
-
-				const choker = new THREE.Mesh(
-					new THREE.TorusGeometry(17, 1.5, 16, 64),
-					chokerMaterial
-				);
-				choker.position.set(0, -68, 3);
-				choker.rotation.x = Math.PI / 2;
-				accessoryGroup.add(choker);
-
-				const chokerGem = new THREE.Mesh(
-					new THREE.SphereGeometry(3, 32, 32),
-					new THREE.MeshPhongMaterial({ 
-						color: 0xff1493,
-						shininess: 150,
-						emissive: 0xff1493,
-						emissiveIntensity: 0.3
-					})
-				);
-				chokerGem.position.set(0, -68, 20);
-				accessoryGroup.add(chokerGem);
-
-				this.character.add(accessoryGroup);
-			}
-
-			createNeck(material) {
-				const neckGroup = new THREE.Group();
-
-				const neck = new THREE.Mesh(
-					new THREE.CylinderGeometry(15, 17, 40, 32),
-					material
-				);
-				neck.position.set(0, -75, 2);
-				neckGroup.add(neck);
-
-				const collarbone = new THREE.Mesh(
-					new THREE.SphereGeometry(20, 32, 16, 0, Math.PI * 2, 0, Math.PI / 3),
-					material
-				);
-				collarbone.position.set(0, -95, 5);
-				collarbone.rotation.x = Math.PI;
-				collarbone.scale.set(1.2, 0.3, 0.8);
-				neckGroup.add(collarbone);
-
-				this.character.add(neckGroup);
-			}
-
-			toggleEmotion() {
-				this.emotionState = this.emotionState === 'happy' ? 'sad' : 'happy';
-				this.createMouth(this.emotionState);
-
-				const eyebrows = this.character.getObjectByName('eyebrows');
-				if (eyebrows) {
-					if (this.emotionState === 'sad') {
-						eyebrows.children.forEach((brow, index) => {
-							brow.rotation.z = index === 0 ? 0.25 : -0.25;
-							brow.position.y = 28;
-						});
-					} else {
-						eyebrows.children.forEach((brow, index) => {
-							brow.rotation.z = index === 0 ? -0.15 : 0.15;
-							brow.position.y = 30;
-						});
-					}
-				}
-			}
-
-			setupEventListeners() {
-				window.addEventListener('resize', () => this.onWindowResize(), false);
-				
-				this.effect.domElement.addEventListener('click', () => {
-					this.toggleEmotion();
-				}, false);
-
-				this.effect.domElement.addEventListener('touchstart', (e) => {
-					e.preventDefault();
-					this.toggleEmotion();
-				}, { passive: false });
-			}
-
-			onWindowResize() {
-				this.camera.aspect = window.innerWidth / window.innerHeight;
-				this.camera.updateProjectionMatrix();
-				this.renderer.setSize(window.innerWidth, window.innerHeight);
-				this.effect.setSize(window.innerWidth, window.innerHeight);
-			}
-
-			animate() {
-				this.animationId = requestAnimationFrame(() => this.animate());
-				this.controls.update();
-				this.effect.render(this.scene, this.camera);
-			}
-
-			dispose() {
-				if (this.animationId) {
-					cancelAnimationFrame(this.animationId);
-				}
-				
-				this.controls.dispose();
-				this.renderer.dispose();
-				
-				this.scene.traverse((object) => {
-					if (object.geometry) {
-						object.geometry.dispose();
-					}
-					if (object.material) {
-						if (Array.isArray(object.material)) {
-							object.material.forEach(material => material.dispose());
-						} else {
-							object.material.dispose();
-						}
-					}
-				});
-			}
+<script type="module">
+	import * as THREE from 'https://cdn.jsdelivr.net/npm/three@latest/build/three.module.js';
+	import { AsciiEffect } from 'https://cdn.jsdelivr.net/npm/three@latest/examples/jsm/effects/AsciiEffect.js';
+
+	// ==============================
+	// ✅ ПОЛНАЯ ИНИЦИАЛИЗАЦИЯ TMA
+	// ==============================
+	const tg = window.Telegram.WebApp;
+
+	tg.ready();          // ✅ обязательный вызов
+	tg.expand();         // ✅ разворачиваем на весь экран
+	tg.disableClosingConfirmation();
+	tg.setBackgroundColor("#000000");
+	tg.setHeaderColor("#000000");
+
+	console.log("TMA platform:", tg.platform);
+	console.log("TMA version:", tg.version);
+
+	// ==============================
+	// ✅ THREE.JS + ANIME
+	// ==============================
+
+	let camera, scene, renderer, effect;
+	let head, eyeL, eyeR, mouth;
+	let expression = "neutral";
+
+	init();
+	startVoiceAuto();   // ✅ СРАЗУ запускаем микрофон
+
+	function init() {
+
+		camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 1, 1000);
+		camera.position.set(0, 40, 380);
+
+		scene = new THREE.Scene();
+		scene.background = new THREE.Color(0x000000);
+
+		const lightMain = new THREE.PointLight(0xffffff, 2.5);
+		lightMain.position.set(200, 300, 300);
+		scene.add(lightMain);
+
+		scene.add(new THREE.AmbientLight(0x404040, 1.5));
+
+		// ===== АНИМЕ ГОЛОВА =====
+
+		head = new THREE.Mesh(
+			new THREE.SphereGeometry(150, 40, 40),
+			new THREE.MeshPhongMaterial({ color: 0xffd1c1 })
+		);
+		scene.add(head);
+
+		const hair = new THREE.Mesh(
+			new THREE.SphereGeometry(155, 40, 40, 0, Math.PI * 2, 0, Math.PI * 0.6),
+			new THREE.MeshPhongMaterial({ color: 0x151515 })
+		);
+		hair.position.y = 40;
+		scene.add(hair);
+
+		eyeL = new THREE.Mesh(
+			new THREE.SphereGeometry(26, 20, 20),
+			new THREE.MeshPhongMaterial({ color: 0x000000 })
+		);
+		eyeL.position.set(-48, 28, 120);
+		scene.add(eyeL);
+
+		eyeR = eyeL.clone();
+		eyeR.position.x = 48;
+		scene.add(eyeR);
+
+		mouth = new THREE.Mesh(
+			new THREE.TorusGeometry(22, 5, 16, 50, Math.PI),
+			new THREE.MeshPhongMaterial({ color: 0xcc2244 })
+		);
+		mouth.position.set(0, -46, 120);
+		mouth.rotation.x = Math.PI;
+		scene.add(mouth);
+
+		renderer = new THREE.WebGLRenderer({ powerPreference: "high-performance" });
+		renderer.setSize(window.innerWidth, window.innerHeight);
+		renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+		effect = new AsciiEffect(renderer, ' .:-+*=%@#', { invert: true });
+		effect.setSize(window.innerWidth, window.innerHeight);
+		effect.domElement.style.color = 'white';
+		effect.domElement.style.backgroundColor = 'black';
+
+		document.body.appendChild(effect.domElement);
+
+		window.addEventListener('resize', onResize);
+		requestAnimationFrame(animate);
+	}
+
+	function onResize() {
+		camera.aspect = window.innerWidth / window.innerHeight;
+		camera.updateProjectionMatrix();
+		renderer.setSize(window.innerWidth, window.innerHeight);
+		effect.setSize(window.innerWidth, window.innerHeight);
+	}
+
+	// ==============================
+	// ✅ ЭМОЦИИ
+	// ==============================
+
+	function setSmile() {
+		expression = "smile";
+		mouth.scale.x = 1.2;
+		mouth.scale.y = 1;
+	}
+
+	function setNeutral() {
+		expression = "neutral";
+		mouth.scale.x = 1;
+		mouth.scale.y = 0.6;
+	}
+
+	function animate(time) {
+		const blink = Math.abs(Math.sin(time * 0.002)) * 0.6 + 0.4;
+		eyeL.scale.y = blink;
+		eyeR.scale.y = blink;
+
+		if (expression === "smile") {
+			mouth.rotation.z = Math.sin(time * 0.003) * 0.1;
 		}
 
-		const app = new AnimeGirl();
+		effect.render(scene, camera);
+		requestAnimationFrame(animate);
+	}
 
-		window.addEventListener('beforeunload', () => {
-			app.dispose();
-		});
-	</script>
+	// ==============================
+	// ✅ МИКРОФОН + РАСПОЗНАВАНИЕ + ОЗВУЧКА
+	// ==============================
+
+	let recognition;
+
+	async function startVoiceAuto() {
+
+		try {
+			// ✅ Запрос разрешения СРАЗУ
+			await navigator.mediaDevices.getUserMedia({ audio: true });
+		} catch (e) {
+			console.warn("Микрофон заблокирован системой");
+			return;
+		}
+
+		const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+		if (!SpeechRecognition) {
+			console.warn("Speech API не поддерживается");
+			return;
+		}
+
+		recognition = new SpeechRecognition();
+		recognition.lang = "ru-RU";
+		recognition.continuous = true;
+		recognition.interimResults = false;
+
+		recognition.onresult = (event) => {
+			const text = event.results[event.results.length - 1][0].transcript.toLowerCase();
+			console.log("Голос:", text);
+
+			if (text.includes("привет")) {
+				setSmile();
+				speak("Привет");
+			}
+		};
+
+		recognition.onerror = () => {
+			restartRecognition();
+		};
+
+		recognition.onend = () => {
+			restartRecognition();
+		};
+
+		recognition.start();
+	}
+
+	function restartRecognition() {
+		try {
+			recognition.start();
+		} catch (e) {}
+	}
+
+	function speak(text) {
+		const utterance = new SpeechSynthesisUtterance(text);
+		utterance.lang = "ru-RU";
+		speechSynthesis.speak(utterance);
+	}
+
+</script>
+
 </body>
 </html>
