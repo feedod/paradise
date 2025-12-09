@@ -2,213 +2,206 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#000000">
     <style>
-        body, html {
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-            background: #000;
-            height: 100%;
-            width: 100%;
+        body, html { 
+            margin:0; padding:0; overflow:hidden; background:#000; 
+            height:100vh; width:100vw; display:block; 
         }
+        /* Для самых новых TWA — учитываем safe-area */
+        body { padding-env(safe-area-inset-top, 0) padding-env(safe-area-inset-bottom, 0); }
     </style>
 </head>
 <body>
 
-<!-- Telegram Mini Apps SDK for integration within TWA -->
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
 <script type="module">
-    'use strict'; // Enable strict mode for better error handling and modern JS practices (ES5+ standard, still relevant in 2025)
+    'use strict';
 
-    // Import required modules from CDN (using latest stable Three.js version as of 2025)
     import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.168.0/build/three.module.js';
     import { AsciiEffect } from 'https://cdn.jsdelivr.net/npm/three@0.168.0/examples/jsm/effects/AsciiEffect.js';
     import { TrackballControls } from 'https://cdn.jsdelivr.net/npm/three@0.168.0/examples/jsm/controls/TrackballControls.js';
 
-    // Declare variables at the top for better readability and scope management
+    // === Переменные ===
     let camera, scene, renderer, effect, controls;
-    let girl; // Group for the chibi girl model
-    let start = Date.now(); // Timestamp for animation timing
+    let girl;
+    const startTime = Date.now();
 
-    // Initialize Telegram WebApp if available (for TWA compatibility, without expand() as per request)
+    // Telegram Mini App готовность (без expand — мы уже внутри TWA)
     if (window.Telegram?.WebApp) {
-        Telegram.WebApp.ready(); // Signal that the app is ready, no expansion needed inside TWA
+        Telegram.WebApp.ready();
     }
 
-    // Main initialization function
+    // === Инициализация ===
     function init() {
-        // Camera setup with perspective projection
-        camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 1000);
-        camera.position.set(0, 0, 400);
+        // Камера
+        camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 1, 1000);
+        camera.position.set(0, 20, 380);
 
-        // Scene creation with black background
+        // Сцена
         scene = new THREE.Scene();
         scene.background = new THREE.Color(0x000000);
 
-        // Lighting: Ambient for overall illumination, Point for highlights
-        scene.add(new THREE.AmbientLight(0xffffff, 1.5));
-        scene.add(new THREE.PointLight(0xff99ff, 2, 0, 0).position.set(300, 400, 500));
+        // Свет
+        scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+        const pointLight = new THREE.PointLight(0xffbbff, 2.5);
+        pointLight.position.set(200, 300, 400);
+        scene.add(pointLight);
 
-        // Create chibi girl as a group of meshes
+        // === CHIBI-ДЕВОЧКА ===
         girl = new THREE.Group();
 
-        // Head: Large spherical head for chibi style
+        // Голова
         const head = new THREE.Mesh(
-            new THREE.SphereGeometry(80, 32, 24),
-            new THREE.MeshPhongMaterial({ color: 0xffddbb, flatShading: true })
+            new THREE.SphereGeometry(78, 32, 24),
+            new THREE.MeshPhongMaterial({ color: 0xffeecc, flatShading: true })
         );
-        head.position.y = 80;
+        head.position.y = 82;
+        head.name = "head";
         girl.add(head);
 
-        // Hair: Main hair mass
-        const hairMain = new THREE.Mesh(
-            new THREE.SphereGeometry(84, 32, 24, 0, Math.PI * 2, 0, Math.PI * 0.9),
-            new THREE.MeshPhongMaterial({ color: 0xff66cc, flatShading: true })
+        // Волосы
+        const hair = new THREE.Mesh(
+            new THREE.SphereGeometry(82, 32, 24, 0, Math.PI*2, 0, Math.PI*0.95),
+            new THREE.MeshPhongMaterial({ color: 0xff3399, flatShading: true })
         );
-        hairMain.position.set(0, 90, -20);
-        girl.add(hairMain);
+        hair.position.y = 92;
+        hair.position.z = -15;
+        girl.add(hair);
 
-        // Ponytails: Left and right side bunches
-        const ponytailGeometry = new THREE.SphereGeometry(30, 20, 16);
-        const ponytailMaterial = new THREE.MeshPhongMaterial({ color: 0xff3399 });
+        // Пучки (twin tails)
+        const tailGeo = new THREE.SphereGeometry(28, 20, 18);
+        const tailMat = new THREE.MeshPhongMaterial({ color: 0xff1177 });
 
-        const ponytailL = new THREE.Mesh(ponytailGeometry, ponytailMaterial);
-        ponytailL.position.set(-60, 100, 0);
-        ponytailL.rotation.z = 0.5;
-        girl.add(ponytailL);
+        const tailL = new THREE.Mesh(tailGeo, tailMat);
+        tailL.position.set(-62, 102, 5);
+        tailL.rotation.z = 0.4;
+        tailL.name = "tailL";
+        girl.add(tailL);
 
-        const ponytailR = new THREE.Mesh(ponytailGeometry, ponytailMaterial);
-        ponytailR.position.set(60, 100, 0);
-        ponytailR.rotation.z = -0.5;
-        girl.add(ponytailR);
+        const tailR = tailL.clone();
+        tailR.position.x = 62;
+        tailR.rotation.z = -0.4;
+        tailR.name = "tailR";
+        girl.add(tailR);
 
-        // Eyes: Large anime-style eyes
-        const eyeGeometry = new THREE.SphereGeometry(18, 16, 12);
-        const eyeMaterial = new THREE.MeshPhongMaterial({ color: 0x000000 });
-
-        const eyeL = new THREE.Mesh(eyeGeometry, eyeMaterial);
-        eyeL.position.set(-30, 90, 65);
+        // Глаза
+        const eyeGeo = new THREE.SphereGeometry(19, 20, 16);
+        const eyeL = new THREE.Mesh(eyeGeo, new THREE.MeshPhongMaterial({ color: 0x000000 }));
+        eyeL.position.set(-32, 92, 68);
         girl.add(eyeL);
 
-        const eyeR = new THREE.Mesh(eyeGeometry, eyeMaterial);
-        eyeR.position.set(30, 90, 65);
+        const eyeR = eyeL.clone();
+        eyeR.position.x = 32;
         girl.add(eyeR);
 
-        // Eye shines: Small highlights for anime effect
-        const shineGeometry = new THREE.SphereGeometry(7, 16, 12);
-        const shineMaterial = new THREE.MeshPhongMaterial({ color: 0xffffff });
-
-        const shineL = new THREE.Mesh(shineGeometry, shineMaterial);
-        shineL.position.set(-35, 95, 75);
+        // Блики в глазах
+        const shineGeo = new THREE.SphereGeometry(8);
+        const shineL = new THREE.Mesh(shineGeo, new THREE.MeshPhongMaterial({ color: 0xffffff }));
+        shineL.position.set(-37, 98, 78);
         girl.add(shineL);
-
-        const shineR = new THREE.Mesh(shineGeometry, shineMaterial);
-        shineR.position.set(25, 95, 75);
+        const shineR = shineL.clone();
+        shineR.position.x = 27;
         girl.add(shineR);
 
-        // Body: Cylindrical torso
-        const body = new THREE.Mesh(
-            new THREE.CylinderGeometry(40, 50, 100, 20),
-            new THREE.MeshPhongMaterial({ color: 0xff99dd, flatShading: true })
-        );
-        body.position.y = 0;
-        girl.add(body);
+        // Тело и юбка
+        girl.add(new THREE.Mesh(
+            new THREE.CylinderGeometry(38, 48, 95, 20),
+            new THREE.MeshPhongMaterial({ color: 0xff99ee, flatShading: true })
+        ));
 
-        // Skirt: Conical skirt for cute chibi look
-        const skirt = new THREE.Mesh(
-            new THREE.ConeGeometry(70, 60, 32),
+        girl.add(new THREE.Mesh(
+            new THREE.ConeGeometry(72, 62, 32),
             new THREE.MeshPhongMaterial({ color: 0xff66ff, flatShading: true })
-        );
-        skirt.position.y = -40;
-        girl.add(skirt);
+        ).position.set(0, -42, 0));
 
-        // Arms: Cylindrical arms with rotation
-        const armGeometry = new THREE.CylinderGeometry(12, 12, 80, 12);
-        const armMaterial = new THREE.MeshPhongMaterial({ color: 0xffddbb });
+        // Руки
+        const armGeo = new THREE.CylinderGeometry(11, 11, 78, 12);
+        const armMat = new THREE.MeshPhongMaterial({ color: 0xffeecc });
 
-        const armL = new THREE.Mesh(armGeometry, armMaterial);
-        armL.position.set(-50, 30, 0);
-        armL.rotation.z = 0.5;
+        const armL = new THREE.Mesh(armGeo, armMat);
+        armL.position.set(-52, 28, 0);
+        armL.rotation.z = Math.PI / 4;
+        armL.name = "armL";
         girl.add(armL);
 
-        const armR = new THREE.Mesh(armGeometry, armMaterial);
-        armR.position.set(50, 30, 0);
-        armR.rotation.z = -0.5;
+        const armR = armL.clone();
+        armR.position.x = 52;
+        armR.rotation.z = -Math.PI / 4;
+        armR.name = "armR";
         girl.add(armR);
 
-        // Add girl group to scene
         scene.add(girl);
 
-        // Renderer setup without antialiasing for ASCII performance
-        renderer = new THREE.WebGLRenderer({ antialias: false });
-        renderer.setPixelRatio(window.devicePixelRatio); // Improve for high-DPI devices (2025 standard)
-        renderer.setSize(window.innerWidth, window.innerHeight);
+        // Рендерер
+        renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false });
+        renderer.setPixelRatio(devicePixelRatio);
+        renderer.setSize(innerWidth, innerHeight);
 
-        // AsciiEffect with optimized parameters for better visual quality
-        effect = new AsciiEffect(renderer, ' .,:;i1tfLCG08@#%&', {
+        // ASCII-эффект — максимально чёткий и милый
+        effect = new AsciiEffect(renderer, " .,:;i1tfLCG08@#%&", {
             invert: false,
-            resolution: 0.18,
+            resolution: 0.175,
             scale: 1
         });
-        effect.setSize(window.innerWidth, window.innerHeight);
-        effect.domElement.style.color = '#ff99ff';
-        effect.domElement.style.backgroundColor = '#000';
-        effect.domElement.style.fontSize = '10px';
-        effect.domElement.style.lineHeight = '9.5px';
-        effect.domElement.style.letterSpacing = '1px';
+        effect.setSize(innerWidth, innerHeight);
+        effect.domElement.style.cssText = `
+            color: #ff99ff;
+            background: #000;
+            font-family: 'Courier New', monospace;
+            font-size: 10px;
+            line-height: 9.5px;
+            letter-spacing: 1px;
+            image-rendering: pixelated;
+        `;
 
-        // Append effect's DOM element (div with ASCII)
         document.body.appendChild(effect.domElement);
 
-        // Controls for interaction (touch/mouse compatible for TWA)
+        // Управление
         controls = new TrackballControls(camera, effect.domElement);
-        controls.rotateSpeed = 3.0;
-        controls.minDistance = 250;
-        controls.maxDistance = 600;
+        controls.rotateSpeed = 3.5;
+        controls.minDistance = 220;
+        controls.maxDistance = 650;
 
-        // Resize event listener with debouncing for performance (modern standard)
-        window.addEventListener('resize', onWindowResize);
+        // Обработка изменения размера
+        window.addEventListener("resize", onResize);
 
-        // Set animation loop using requestAnimationFrame for efficiency
+        // Запуск анимации
         requestAnimationFrame(animate);
     }
 
-    // Resize handler to update camera and renderer
-    function onWindowResize() {
-        camera.aspect = window.innerWidth / window.innerHeight;
+    function onResize() {
+        camera.aspect = innerWidth / innerHeight;
         camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        effect.setSize(window.innerWidth, window.innerHeight);
+        renderer.setSize(innerWidth, innerHeight);
+        effect.setSize(innerWidth, innerHeight);
     }
 
-    // Animation loop function
     function animate() {
-        requestAnimationFrame(animate); // Loop using RAF for smooth 60FPS (Web standard)
+        requestAnimationFrame(animate);
 
-        const t = Date.now() - start; // Time delta for animations
+        const t = Date.now() - startTime;
 
-        // Gentle rotation and bouncing for the whole girl
-        girl.rotation.y = Math.sin(t * 0.001) * 0.2;
-        girl.position.y = Math.abs(Math.sin(t * 0.003)) * 20;
+        // Общее покачивание
+        girl.rotation.y = Math.sin(t * 0.0012) * 0.22;
+        girl.position.y = Math.abs(Math.sin(t * 0.0028)) * 22;
 
-        // Ponytails swaying animation
-        girl.children[2].rotation.z = Math.sin(t * 0.004) * 0.3 + 0.5; // ponytailL
-        girl.children[3].rotation.z = -Math.sin(t * 0.004) * 0.3 - 0.5; // ponytailR
+        // Пучки колышутся
+        girl.getObjectByName("tailL").rotation.z = Math.sin(t * 0.004) * 0.35 + 0.4;
+        girl.getObjectByName("tailR").rotation.z = -Math.sin(t * 0.004) * 0.35 - 0.4;
 
-        // Arms waving animation (fixed indices: arms are at 10 and 11)
-        girl.children[10].rotation.z = Math.sin(t * 0.005) * 0.6 + 0.5; // armL
-        girl.children[11].rotation.z = -Math.sin(t * 0.005) * 0.6 - 0.5; // armR
+        // Ручки машут
+        girl.getObjectByName("armL").rotation.z = Math.sin(t * 0.006) * 0.7 + 0.8;
+        girl.getObjectByName("armR").rotation.z = -Math.sin(t * 0.006) * 0.7 - 0.8;
 
-        // Update controls and render
         controls.update();
         effect.render(scene, camera);
     }
 
-    // Start initialization
+    // === Старт ===
     init();
 </script>
-
 </body>
 </html>
