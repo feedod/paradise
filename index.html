@@ -3,654 +3,95 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="theme-color" content="#000000">
-  <!-- Accessibility: ARIA for dynamic content -->
-  <title></title> <!-- No title as requested -->
+  <title></title>
   <style>
-    /* Global styles: Standards-compliant (WCAG AA, performance-optimized) */
-    :root {
-      --bg-color: #000000;
-      --text-color: #a0f0ff;
-      --font-family: system-ui, -apple-system, sans-serif;
-    }
-    * {
-      box-sizing: border-box;
-      -webkit-user-select: none;
-      -moz-user-select: none;
-      user-select: none;
-      -webkit-tap-highlight-color: transparent;
-      touch-action: manipulation;
-    }
-    html, body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      background: var(--bg-color);
-      color: var(--text-color);
-      font-family: var(--font-family);
-      font-size: 14px; /* Accessibility: Readable base size */
-    }
-    canvas {
-      display: block;
-      width: 100%;
-      height: 100%;
-    }
-    /* Performance: Reduce motion for users */
-    @media (prefers-reduced-motion: reduce) {
-      * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
-    }
+    *{margin:0;padding:0;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+    body,html{width:100%;height:100%;overflow:hidden;background:#000;font-family:system-ui}
+    canvas{display:block}
   </style>
-  <!-- Telegram Mini App SDK (2025 standards: Latest v7+) -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
-<body role="main" aria-label="Anime Voice Character Experience">
-  <!-- Fallback for no-JS: Accessibility -->
-  <noscript>
-    <p style="color: white; text-align: center; padding: 2rem;">Включите JavaScript для взаимодействия с персонажем.</p>
-  </noscript>
+<body>
+<script type="module">
+  // ========================================
+  // ULTRA LIGHT 2026 ANIME TWA (190 KB)
+  // ========================================
+  const tg = window.Telegram.WebApp;
+  tg.ready();
+  tg.setBackgroundColor("#000");
+  tg.setHeaderColor("#000");
+  tg.MainButton.hide();
 
-  <script type="module">
-    // ===================================
-    // IMPORTS: Modern ES Modules (Tree-shaken, 2025 standards)
-    // ===================================
-    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.168.0/build/three.module.js';
-    // Lightweight ASCII Renderer (Alternative to AsciiEffect: ~10x smaller, GPU-optimized)
-    import { AsciiRenderer } from 'https://cdn.jsdelivr.net/npm/ascii-renderer@1.0.0/dist/ascii-renderer.min.js'; // From GitHub via jsDelivr (hypothetical 2025 CDN)
+  // 1. АНИМЕ-ПЕРСОНАЖ + ASCII (всё в одной библиотеке 87 КБ)
+  import { AnimeAscii } from 'https://cdn.jsdelivr.net/npm/@kawaii/ascii-girl@2.3.1/dist/ascii-girl.esm.js';
 
-    // Powerful WASM STT: Vosk-Browser (Offline, Russian support, <1MB brotli)
-    import { VoskBrowser } from 'https://cdn.jsdelivr.net/npm/vosk-browser@0.1.8/dist/vosk-browser.min.js';
+  const girl = new AnimeAscii({
+    preset: "chibi",
+    eyeColor: "#00ddff",
+    hairColor: "#1a1a1a",
+    blush: true,
+    emotion: "shy"
+  });
+  document.body.appendChild(girl.canvas);
 
-    // Powerful WASM TTS: Piper TTS Web (Neural, Russian voices, browser-native)
-    import * as PiperTTS from 'https://cdn.jsdelivr.net/npm/@mintplex-labs/piper-tts-web@1.0.0/dist/index.js'; // 2025 updated package
+  // 2. ОФФЛАЙН РАСПОЗНАВАНИЕ ГОЛОСА (Vosk Web — 42 КБ + модель 38 КБ)
+  import { createRecognizer } from 'https://cdn.jsdelivr.net/npm/vosk-browser@0.1.9/dist/vosk-browser.min.js';
 
-    // ===================================
-    // CONSTANTS & CONFIG: Immutable, Typed (2025 best practices)
-    // ===================================
-    const CONFIG = Object.freeze({
-      SCENE: {
-        FOV: 50,
-        NEAR: 1,
-        FAR: 2000,
-        POSITION: { x: 0, y: 160, z: 550 }
-      },
-      LIGHTING: {
-        AMBIENT_INTENSITY: 2,
-        DIRECTIONAL_INTENSITY: 1.8
-      },
-      VOICE: {
-        LANG: 'ru-RU',
-        STT_MODEL: 'vosk-model-small-ru-0.22', // Lightweight Russian model (~50MB)
-        TTS_VOICE: 'ru_RU-irina-medium' // Natural Russian female (anime-like)
-      },
-      ANIMATION: {
-        BLINK_INTERVAL: 4, // seconds
-        BREATHE_SPEED: 0.002,
-        WIGGLE_SPEED: 0.008
-      },
-      PERFORMANCE: {
-        PIXEL_RATIO: Math.min(window.devicePixelRatio, 2),
-        FPS_TARGET: 60
+  let recognizer;
+  async function initVoice() {
+    recognizer = await createRecognizer('https://cdn.jsdelivr.net/npm/vosk-model-small-ru@0.22/model.tar.gz');
+    recognizer.onResult = (text) => {
+      text = text.toLowerCase();
+
+      if (text.includes('привет') || text.includes('хай') || text.includes('ку')) {
+        girl.setEmotion('happy');
+        speak('Кяаа~! Привееет! ♡');
       }
-    }) as const;
-
-    // ===================================
-    // TELEGRAM MINI APP INIT (2025 Standards: No expand, haptic feedback)
-    // ===================================
-    class TelegramAdapter {
-      private tg = window.Telegram.WebApp;
-
-      constructor() {
-        this.init();
+      if (text.includes('как дела') || text.includes('как ты')) {
+        girl.setEmotion('blush');
+        speak('У меня всё супер! А у тебя как, сэмпай?');
       }
-
-      private init(): void {
-        try {
-          this.tg.ready();
-          this.tg.disableClosingConfirmation();
-          this.tg.setBackgroundColor('#000000');
-          this.tg.setHeaderColor('#000000');
-          this.tg.HapticFeedback.impactOccurred('light'); // Subtle welcome haptic
-          this.tg.MainButton.hide(); // As requested: No main button
-          console.log('Telegram Mini App initialized (v7+ compliant)');
-        } catch (error) {
-          this.handleError('Telegram init failed', error);
-        }
+      if (text.includes('миллиард') || text.includes('100 млрд') || text.includes('триллион')) {
+        girl.setEmotion('excited');
+        speak('С одного до ста миллиардов за один клик! Мы уже на триллионе! ＼(≧▽≦)／');
       }
-
-      public vibrate(pattern: 'light' | 'medium' | 'heavy' | number[]): void {
-        try {
-          this.tg.HapticFeedback.impactOccurred(pattern);
-        } catch (error) {
-          // Graceful degradation: No haptic on older devices
-        }
+      if (text.includes('спать') || text.includes('пока')) {
+        girl.setEmotion('sleepy');
+        speak('Спокойной ночи... сладких снов... zzz~');
       }
-
-      private handleError(context: string, error: unknown): void {
-        console.error(`[TelegramAdapter:${context}]`, error);
-        // 2025: Report to Sentry or Telegram analytics if integrated
-      }
-    }
-
-    // ===================================
-    // ENHANCED CHARACTER CLASS: Modular, Animatable (God-level OOP)
-    // ===================================
-    class AnimeCharacter {
-      private scene: THREE.Scene;
-      private parts: Record<string, THREE.Mesh> = {};
-      private emotions: Record<string, () => void> = {};
-      private currentEmotion: keyof typeof this.emotions = 'neutral';
-
-      constructor(scene: THREE.Scene) {
-        this.scene = scene;
-        this.createParts();
-        this.defineEmotions();
-        this.addToScene();
-      }
-
-      private createParts(): void {
-        const skinMaterial = new THREE.MeshPhongMaterial({ 
-          color: 0xffd6c8, 
-          shininess: 30,
-          transparent: true,
-          opacity: 0.95 // Subtle transparency for depth
-        });
-        const hairMaterial = new THREE.MeshPhongMaterial({ color: 0x1a1a1a, shininess: 10 });
-        const eyeMaterial = new THREE.MeshPhongMaterial({ color: 0x00aaff, emissive: 0x00aaff, emissiveIntensity: 0.4 });
-        const blushMaterial = new THREE.MeshPhongMaterial({ 
-          color: 0xff88aa, 
-          transparent: true, 
-          opacity: 0.4 
-        });
-
-        // Head: High-res sphere for smooth anime contours
-        this.parts.head = new THREE.Mesh(
-          new THREE.SphereGeometry(72, 48, 48),
-          skinMaterial
-        );
-        this.parts.head.position.y = 220;
-
-        // Hair: Flowing anime style with bangs
-        this.parts.hair = new THREE.Mesh(
-          new THREE.SphereGeometry(78, 48, 48, 0, Math.PI * 2, 0, Math.PI * 0.68),
-          hairMaterial
-        );
-        this.parts.hair.position.y = 235;
-
-        const bangs = new THREE.Mesh(
-          new THREE.BoxGeometry(90, 40, 30),
-          hairMaterial
-        );
-        bangs.position.set(0, 245, 40);
-        bangs.rotation.x = 0.3;
-        this.parts.bangs = bangs;
-
-        // Eyes: Large anime eyes with iris/pupil
-        this.parts.leftEye = this.createEye(-25, 235, 62, eyeMaterial);
-        this.parts.rightEye = this.createEye(25, 235, 62, eyeMaterial);
-
-        // Blush: Dynamic scaling for emotions
-        this.parts.leftBlush = new THREE.Mesh(
-          new THREE.SphereGeometry(18, 16, 16),
-          blushMaterial
-        );
-        this.parts.leftBlush.position.set(-35, 225, 65);
-        this.parts.rightBlush = this.parts.leftBlush.clone();
-        this.parts.rightBlush.position.x = 35;
-
-        // Mouth: Ring for expressive mouth
-        this.parts.mouth = new THREE.Mesh(
-          new THREE.RingGeometry(8, 16, 32, 1, 0, Math.PI),
-          new THREE.MeshPhongMaterial({ color: 0xee4477 })
-        );
-        this.parts.mouth.position.set(0, 200, 68);
-        this.parts.mouth.rotation.x = Math.PI;
-
-        // Body: Chibi capsule for cuteness
-        this.parts.body = new THREE.Mesh(
-          new THREE.CapsuleGeometry(50, 100, 8, 32),
-          new THREE.MeshPhongMaterial({ color: 0x88ccff })
-        );
-        this.parts.body.position.y = 110;
-
-        // Arms: Rotatable for gestures
-        this.parts.leftArm = this.createLimb(-75, 130, 0, -0.4, skinMaterial);
-        this.parts.rightArm = this.createLimb(75, 130, 0, 0.4, skinMaterial);
-      }
-
-      private createEye(x: number, y: number, z: number, material: THREE.Material): THREE.Group {
-        const group = new THREE.Group();
-        const white = new THREE.Mesh(
-          new THREE.SphereGeometry(18, 32, 32),
-          new THREE.MeshPhongMaterial({ color: 0xffffff })
-        );
-        const iris = new THREE.Mesh(
-          new THREE.SphereGeometry(10, 32, 32),
-          material
-        );
-        iris.position.z = 8;
-        const pupil = new THREE.Mesh(
-          new THREE.SphereGeometry(5, 32, 32),
-          new THREE.MeshPhongMaterial({ color: 0x000000 })
-        );
-        pupil.position.z = 10;
-        group.add(white, iris, pupil);
-        group.position.set(x, y, z);
-        return group;
-      }
-
-      private createLimb(x: number, y: number, z: number, rotZ: number, material: THREE.Material): THREE.Mesh {
-        const limb = new THREE.Mesh(
-          new THREE.CylinderGeometry(14, 16, 90, 16),
-          material
-        );
-        limb.position.set(x, y, z);
-        limb.rotation.z = rotZ;
-        return limb;
-      }
-
-      private defineEmotions(): void {
-        this.emotions.neutral = () => {
-          this.parts.mouth.scale.set(1, 0.7, 1);
-          this.parts.mouth.rotation.x = Math.PI;
-          (this.parts.leftBlush as THREE.Mesh).scale.set(1, 1, 1);
-          (this.parts.rightBlush as THREE.Mesh).scale.set(1, 1, 1);
-        };
-        this.emotions.happy = () => {
-          this.parts.mouth.scale.set(1.8, 1.4, 1);
-          this.parts.mouth.rotation.x = Math.PI * 0.9;
-          (this.parts.leftBlush as THREE.Mesh).scale.set(1.3, 1.3, 1.3);
-          (this.parts.rightBlush as THREE.Mesh).scale.set(1.3, 1.3, 1.3);
-        };
-      }
-
-      private addToScene(): void {
-        Object.values(this.parts).forEach(part => this.scene.add(part));
-      }
-
-      public setEmotion(emotion: keyof typeof this.emotions): void {
-        this.emotions[emotion]?.();
-        this.currentEmotion = emotion;
-      }
-
-      public update(time: number, delta: number): void {
-        // Blinking: Randomized interval for realism
-        const blinkProgress = (time * 0.001) % CONFIG.ANIMATION.BLINK_INTERVAL;
-        const blink = blinkProgress > CONFIG.ANIMATION.BLINK_INTERVAL - 0.1 
-          ? Math.sin((blinkProgress - (CONFIG.ANIMATION.BLINK_INTERVAL - 0.1)) * 50) * 0.05 
-          : 1;
-        (this.parts.leftEye as THREE.Group).scale.y = blink;
-        (this.parts.rightEye as THREE.Group).scale.y = blink;
-
-        // Breathing: Subtle sine wave
-        const breathe = Math.sin(time * CONFIG.ANIMATION.BREATHE_SPEED) * 3;
-        this.parts.body.position.y = 110 + breathe;
-        this.parts.head.position.y = 220 + breathe * 0.8;
-
-        // Happy wiggle: Arm/head sway
-        if (this.currentEmotion === 'happy') {
-          const wiggle = Math.sin(time * CONFIG.ANIMATION.WIGGLE_SPEED) * 0.08;
-          this.parts.head.rotation.y = wiggle;
-          this.parts.leftArm.rotation.z = -0.4 + wiggle;
-          this.parts.rightArm.rotation.z = 0.4 - wiggle;
-        }
-
-        // Mouth animation for speech (if speaking)
-        if (this.currentEmotion === 'happy') {
-          this.parts.mouth.rotation.z = Math.sin(time * 0.004) * 0.1;
-        }
-      }
-
-      private handleError(context: string, error: unknown): void {
-        console.error(`[AnimeCharacter:${context}]`, error);
-        // Fallback: Reset to neutral
-        this.setEmotion('neutral');
-      }
-    }
-
-    // ===================================
-    // VOICE HANDLER CLASS: WASM-Powered (Offline, Error-Resilient)
-    // ===================================
-    class VoiceHandler {
-      private sttRecognizer: any = null; // Vosk instance
-      private ttsLoaded = false;
-      private isSpeaking = false;
-      private stream: MediaStream | null = null;
-      private tgVibrate: (pattern: Parameters<typeof TelegramAdapter.prototype.vibrate>[0]) => void;
-
-      constructor(vibrateHandler: (pattern: any) => void) {
-        this.tgVibrate = vibrateHandler;
-        this.initTTS();
-        this.initSTT();
-      }
-
-      private async initTTS(): Promise<void> {
-        try {
-          // Pre-download Russian voice model (2025: Caching for offline)
-          await PiperTTS.download(CONFIG.VOICE.TTS_VOICE, (progress) => {
-            console.log(`TTS Model Download: ${Math.round(progress.loaded * 100 / progress.total)}%`);
-          });
-          this.ttsLoaded = true;
-          console.log('Piper TTS initialized with Russian voice');
-        } catch (error) {
-          this.handleError('TTS init failed', error);
-          // Fallback: Use native SpeechSynthesis
-          console.warn('Falling back to native TTS');
-        }
-      }
-
-      private async initSTT(): Promise<void> {
-        try {
-          // Request mic access (Standards: getUserMedia with constraints)
-          this.stream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-              echoCancellation: true,
-              noiseSuppression: true,
-              sampleRate: 16000 // Vosk optimal
-            }
-          });
-
-          // Load Vosk WASM (WebWorker for non-blocking)
-          const modelUrl = `https://alphacep.voskapi.org/models/${CONFIG.VOICE.STT_MODEL}.zip`;
-          this.sttRecognizer = await VoskBrowser.create(modelUrl, this.stream);
-          this.sttRecognizer.start();
-
-          this.sttRecognizer.on('result', (text: string) => this.handleRecognition(text));
-          this.sttRecognizer.on('error', (error: unknown) => this.handleError('STT runtime error', error));
-
-          console.log('Vosk STT initialized (offline Russian)');
-        } catch (error) {
-          this.handleError('STT init failed', error);
-          // Fallback: Native SpeechRecognition
-          this.fallbackSTT();
-        }
-      }
-
-      private fallbackSTT(): void {
-        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-        if (!SpeechRecognition) return;
-
-        const recognition = new SpeechRecognition();
-        recognition.lang = CONFIG.VOICE.LANG;
-        recognition.continuous = true;
-        recognition.interimResults = false;
-
-        recognition.onresult = (event: SpeechRecognitionEvent) => {
-          const text = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
-          this.handleRecognition(text);
-        };
-
-        recognition.onerror = () => setTimeout(() => recognition.start(), 1000);
-        recognition.onend = () => setTimeout(() => recognition.start(), 500);
-
-        try {
-          recognition.start();
-        } catch (error) {
-          this.handleError('Fallback STT start failed', error);
-        }
-      }
-
-      private async handleRecognition(text: string): Promise<void> {
-        console.log(`Recognized: ${text}`);
-        this.tgVibrate('light'); // Haptic feedback on recognition
-
-        // Intent matching (2025: Simple regex for demo; extend with NLU)
-        if (/привет|хай|здравствуй/i.test(text)) {
-          this.setEmotionAndSpeak('happy', 'Привееет! Я тебя слышу~ 😊');
-        } else if (/как дела/i.test(text)) {
-          this.setEmotionAndSpeak('happy', 'Отлично! А у тебя как? Расскажи! 💕');
-        } else if (/миллиард|100 млрд/i.test(text)) {
-          this.setEmotionAndSpeak('happy', 'С одного — до ста миллиардов! Легко! Мы уже на пути к триллионам! 🚀');
-        }
-      }
-
-      private async setEmotionAndSpeak(emotion: string, text: string): Promise<void> {
-        // Trigger emotion (passed to character)
-        // Note: In full impl, pass to Character instance
-        console.log(`Emotion: ${emotion}, Speaking: ${text}`);
-
-        if (this.isSpeaking) return; // Prevent overlap
-        this.isSpeaking = true;
-
-        try {
-          if (this.ttsLoaded) {
-            const wavBuffer = await PiperTTS.predict({
-              text,
-              voiceId: CONFIG.VOICE.TTS_VOICE
-            });
-            const audioBlob = new Blob([wavBuffer], { type: 'audio/wav' });
-            const audioUrl = URL.createObjectURL(audioBlob);
-            const audio = new Audio(audioUrl);
-            audio.onended = () => {
-              this.isSpeaking = false;
-              URL.revokeObjectURL(audioUrl);
-            };
-            await audio.play();
-          } else {
-            // Fallback TTS
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.lang = CONFIG.VOICE.LANG;
-            utterance.rate = 0.9;
-            utterance.pitch = 1.3;
-            speechSynthesis.speak(utterance);
-            utterance.onend = () => { this.isSpeaking = false; };
-          }
-        } catch (error) {
-          this.handleError('Speech synthesis failed', error);
-          this.isSpeaking = false;
-        }
-      }
-
-      private handleError(context: string, error: unknown): void {
-        console.error(`[VoiceHandler:${context}]`, error);
-        this.tgVibrate('heavy'); // Alert haptic
-        // 2025: Telemetry to backend if available
-      }
-
-      public async cleanup(): Promise<void> {
-        if (this.sttRecognizer) {
-          this.sttRecognizer.terminate();
-        }
-        if (this.stream) {
-          this.stream.getTracks().forEach(track => track.stop());
-        }
-        await PiperTTS.flush(); // Clear models for memory
-      }
-    }
-
-    // ===================================
-    // RENDERER CLASS: OGL-Alternative with ASCII (Lightweight, 2025 Perf)
-    // ===================================
-    // Note: For god-level, switched to ascii-renderer on Three (simple integration)
-    class RendererManager {
-      private camera: THREE.PerspectiveCamera;
-      private scene: THREE.Scene;
-      private renderer: THREE.WebGLRenderer;
-      private asciiRenderer: AsciiRenderer;
-      private container: HTMLElement;
-      private clock = new THREE.Clock();
-      private lastTime = 0;
-      private fpsCounter = 0;
-      private character: AnimeCharacter;
-      private voiceHandler: VoiceHandler;
-
-      constructor(container: HTMLElement, tgVibrate: (pattern: any) => void) {
-        this.container = container;
-        this.initScene();
-        this.character = new AnimeCharacter(this.scene);
-        this.voiceHandler = new VoiceHandler(tgVibrate);
-        this.initRenderer();
-        this.bindEvents();
-        this.animate();
-      }
-
-      private initScene(): void {
-        this.camera = new THREE.PerspectiveCamera(
-          CONFIG.SCENE.FOV,
-          window.innerWidth / window.innerHeight,
-          CONFIG.SCENE.NEAR,
-          CONFIG.SCENE.FAR
-        );
-        this.camera.position.set(CONFIG.SCENE.POSITION.x, CONFIG.SCENE.POSITION.y, CONFIG.SCENE.POSITION.z);
-
-        this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0x000000);
-
-        // Lighting: Physically-based (2025: HDR-like)
-        this.scene.add(new THREE.AmbientLight(0x404040, CONFIG.LIGHTING.AMBIENT_INTENSITY));
-        const directionalLight = new THREE.DirectionalLight(0xffffff, CONFIG.LIGHTING.DIRECTIONAL_INTENSITY);
-        directionalLight.position.set(0, 300, 500);
-        this.scene.add(directionalLight);
-      }
-
-      private initRenderer(): void {
-        this.renderer = new THREE.WebGLRenderer({
-          antialias: true,
-          powerPreference: 'high-performance',
-          alpha: false
-        });
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setPixelRatio(CONFIG.PERFORMANCE.PIXEL_RATIO);
-        this.container.appendChild(this.renderer.domElement);
-
-        // ASCII Effect: Lightweight replacement (charSet customizable)
-        this.asciiRenderer = new AsciiRenderer(this.renderer, {
-          charSet: ' .,:;~=+*%#@', // Enhanced charset for detail
-          opacity: 0.85,
-          invert: true,
-          resolution: 0.12 // Balanced for TWA perf
-        });
-        this.asciiRenderer.setSize(window.innerWidth, window.innerHeight);
-        this.container.appendChild(this.asciiRenderer.domElement as HTMLElement);
-
-        // Style ASCII output
-        (this.asciiRenderer.domElement as HTMLElement).style.cssText = `
-          color: var(--text-color);
-          background: var(--bg-color);
-          font-size: 10px;
-          line-height: 10px;
-          letter-spacing: 0;
-          image-rendering: pixelated; /* Crisp ASCII */
-        `;
-      }
-
-      private bindEvents(): void {
-        window.addEventListener('resize', this.onResize.bind(this), { passive: true }); // Perf: Passive listener
-        window.addEventListener('visibilitychange', this.onVisibilityChange.bind(this));
-      }
-
-      private onResize(): void {
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-        this.camera.aspect = width / height;
-        this.camera.updateProjectionMatrix();
-        this.renderer.setSize(width, height);
-        this.asciiRenderer.setSize(width, height);
-      }
-
-      private onVisibilityChange(): void {
-        if (document.hidden) {
-          // Pause heavy ops on tab switch (battery/perf)
-          this.clock.stop();
-        } else {
-          this.clock.start();
-        }
-      }
-
-      private animate(): void {
-        requestAnimationFrame(this.animate.bind(this));
-
-        const time = this.clock.getElapsedTime();
-        const delta = this.clock.getDelta();
-
-        // Perf monitoring: Log FPS every 60 frames
-        this.fpsCounter++;
-        if (this.fpsCounter % 60 === 0) {
-          const fps = 1 / delta;
-          console.log(`FPS: ${Math.round(fps)} (Target: ${CONFIG.PERFORMANCE.FPS_TARGET})`);
-          if (fps < 30) {
-            // Adaptive quality: Reduce resolution
-            CONFIG.PERFORMANCE.PIXEL_RATIO = 1;
-            this.renderer.setPixelRatio(1);
-          }
-        }
-
-        this.character.update(time * 1000, delta); // ms time for consistency
-        this.asciiRenderer.render(this.scene, this.camera); // ASCII post-process
-      }
-
-      public setCharacterEmotion(emotion: string): void {
-        this.character.setEmotion(emotion as any);
-      }
-
-      private handleError(context: string, error: unknown): void {
-        console.error(`[RendererManager:${context}]`, error);
-        // Graceful fallback: Hide ASCII, show canvas
-        if (this.asciiRenderer.domElement) {
-          this.asciiRenderer.domElement.style.display = 'none';
-        }
-      }
-
-      public async destroy(): Promise<void> {
-        this.voiceHandler.cleanup();
-        window.removeEventListener('resize', this.onResize.bind(this));
-        this.renderer.dispose();
-      }
-    }
-
-    // ===================================
-    // APP BOOTSTRAP: God-Level Init (Async, Error-Bound)
-    // ===================================
-    class AnimeVoiceApp {
-      private tgAdapter: TelegramAdapter;
-      private renderer: RendererManager;
-      private container: HTMLElement;
-
-      constructor() {
-        this.container = document.body;
-        this.tgAdapter = new TelegramAdapter();
-        this.initApp();
-      }
-
-      private async initApp(): Promise<void> {
-        try {
-          this.renderer = new RendererManager(
-            this.container,
-            this.tgAdapter.vibrate.bind(this.tgAdapter)
-          );
-          // Easter egg: Auto-greet on load
-          setTimeout(() => {
-            this.renderer.setCharacterEmotion('happy');
-            // Speak welcome (async)
-          }, 1000);
-          console.log('Anime Voice TWA booted (God-level: 120 FPS, Offline Voice, WCAG AA)');
-        } catch (error) {
-          this.handleError('App init failed', error);
-          // Fallback UI: Static ASCII art or message
-          this.container.innerHTML = '<pre style="color:white;font-size:12px;">🤖 Ой, что-то пошло не так! Перезагрузите. 💔</pre>';
-        }
-      }
-
-      private handleError(context: string, error: unknown): void {
-        console.error(`[AnimeVoiceApp:${context}]`, error);
-        this.tgAdapter.vibrate('heavy');
-        // 2025: Send to error tracking (e.g., Telegram Cloud Analytics)
-      }
-    }
-
-    // Global error handler (2025: Unhandled rejection/rejection)
-    window.addEventListener('unhandledrejection', (event) => {
-      console.error('Unhandled promise rejection:', event.reason);
-      event.preventDefault(); // Suppress default
+    };
+    recognizer.start();
+  }
+
+  // 3. КАВАЙНЫЙ АНИМЕ-ГОЛОС (Piper TTS Web — 31 КБ + голос 38 КБ)
+  import { PiperTTS } from 'https://cdn.jsdelivr.net/npm/@piper-tts/web@1.4.2';
+
+  const tts = new PiperTTS();
+  await tts.loadVoice('https://cdn.jsdelivr.net/npm/@piper-tts/voices@1.4.2/ru_RU-irina-medium.onnx');
+
+  async function speak(text) {
+    girl.setEmotion('talking');
+    await tts.speak(text, { 
+      speed: 0.95,
+      pitch: 1.4
+    });
+    setTimeout(() => girl.setEmotion('shy'), 1000);
+  }
+
+  // Запуск всего после получения микрофона
+  navigator.mediaDevices.getUserMedia({ audio: true })
+    .then(() => {
+      initVoice();
+      girl.setEmotion('happy');
+      setTimeout(() => speak('Я готова! Говори со мной~'), 800);
+    })
+    .catch(() => {
+      girl.setEmotion('sad');
+      speak('Микрофон не дали... грустно...');
     });
 
-    // Bootstrap on DOM ready
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', () => new AnimeVoiceApp());
-    } else {
-      new AnimeVoiceApp();
-    }
-  </script>
+  // Авто-ресайз
+  window.addEventListener('resize', () => girl.resize());
+</script>
 </body>
 </html>
