@@ -1,158 +1,253 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>ASCII Airi • TWA</title>
-
-  <script type="importmap">
-  {
-    "imports": {
-      "three": "https://cdn.jsdelivr.net/npm/three@0.168.0/build/three.module.js",
-      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.168.0/examples/jsm/"
-    }
-  }
-  </script>
-
-  <style>
-    body { margin:0; overflow:hidden; background:#000; }
-    #ascii { position:absolute; inset:0; color:#0f0; font-family:'Courier New',monospace; font-size:9px; line-height:8px; letter-spacing:0; pointer-events:none; }
-  </style>
+    <meta charset="UTF-8">
+    <!-- Telegram WebApp: отключение зума, масштабирования и выделения -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    
+    <!-- Полностью отключаем выделение текста и контекстное меню -->
+    <style>
+        * {
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            -webkit-touch-callout: none;
+        }
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+            touch-action: pan-x pan-y pinch-zoom; /* Разрешаем только нужные жесты */
+        }
+    </style>
+    <!-- Telegram Web App SDK (latest as of 2025) -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
-
-<div id="ascii"></div>
-
 <script type="module">
-  import * as THREE from 'three';
-  import { AsciiEffect } from 'three/addons/effects/AsciiEffect.js';
-  import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    // Импортируем библиотеки с актуальных CDN (по состоянию на декабрь 2025)
+    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.181.2/build/three.module.js';
+    import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.181.2/examples/jsm/controls/OrbitControls.js';
+    import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.181.2/examples/jsm/loaders/GLTFLoader.js';
+    
+    // Актуальная версия @pixiv/three-vrm (3.4.4)
+    import { VRM, VRMUtils, VRMLoaderPlugin } from 'https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.4.4/dist/three-vrm.module.js';
 
-  // Telegram Web App
-  if (window.Telegram?.WebApp) {
-    Telegram.WebApp.ready();
-    Telegram.WebApp.expand();
-  }
+    /**
+     * Главный класс приложения для отображения 3D-вайфу модели в Telegram Web App.
+     * Обеспечивает инициализацию сцены, загрузку модели, рендеринг и обработку ошибок.
+     */
+    class WaifuTelegramApp {
+        /**
+         * Конструктор: инициализирует свойства класса.
+         */
+        constructor() {
+            this.scene = new THREE.Scene();
+            this.camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 100);
+            this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
+            this.clock = new THREE.Clock();
+            this.currentVrm = null;
+            this.mixer = null;
+            this.controls = null;
 
-  // Запрос микрофона (по заданию)
-  navigator.mediaDevices.getUserMedia({ audio: true })
-    .then(s => s.getTracks().forEach(t => t.stop()))
-    .catch(() => {});
+            this.initializeTelegram();
+            this.initializeRenderer();
+            this.initializeCameraAndControls();
+            this.initializeLights();
+            this.loadVrmModel().catch(error => this.handleError(error));
+            this.startAnimationLoop();
+            this.bindEventListeners();
+        }
 
-  const scene   = new THREE.Scene();
-  scene.background = new THREE.Color(0x000000);
+        /**
+         * Инициализация Telegram Web App с учетом специфики 2025 года.
+         */
+        initializeTelegram() {
+            if (window.Telegram && window.Telegram.WebApp) {
+                const webApp = Telegram.WebApp;
+                webApp.ready();
+                webApp.expand();
+                webApp.enableClosingConfirmation();
+                webApp.setBackgroundColor('#000000');
+                webApp.setHeaderColor('#000000');
+                // Дополнительная настройка для иммерсивного режима
+                webApp.disableVerticalSwipes();
+            } else {
+                console.warn('Telegram Web App SDK not loaded. Running in standalone mode.');
+            }
+        }
 
-  const camera  = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 1000);
-  camera.position.set(0, 0, 5);
+        /**
+         * Инициализация рендерера с оптимальными настройками для производительности.
+         */
+        initializeRenderer() {
+            this.renderer.setPixelRatio(window.devicePixelRatio);
+            this.renderer.setSize(window.innerWidth, window.innerHeight);
+            this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+            this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            this.renderer.toneMappingExposure = 1.0;
+            this.renderer.shadowMap.enabled = true;
+            this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.body.appendChild(this.renderer.domElement);
+        }
 
-  const renderer = new THREE.WebGLRenderer({ antialias:false });
-  renderer.setSize(innerWidth, innerHeight);
-  renderer.setPixelRatio(devicePixelRatio);
+        /**
+         * Инициализация камеры и контроллера OrbitControls с ограничениями для фокуса на модели.
+         */
+        initializeCameraAndControls() {
+            this.camera.position.set(0, 1.4, 2.2);
 
-  // ASCII-эффект
-  const effect = new AsciiEffect(renderer, ' .,:;i1tfLCG08@', { invert: true, resolution: 0.12 });
-  effect.setSize(innerWidth, innerHeight);
-  effect.domElement.style.color = '#00ffaa';
-  effect.domElement.style.backgroundColor = '#000';
-  effect.domElement.id = 'ascii';
-  document.body.appendChild(effect.domElement);
+            this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+            this.controls.enableDamping = true;
+            this.controls.dampingFactor = 0.05;
+            this.controls.screenSpacePanning = false;
+            this.controls.minDistance = 1.2;
+            this.controls.maxDistance = 4.0;
+            this.controls.minPolarAngle = Math.PI * 0.35;
+            this.controls.maxPolarAngle = Math.PI * 0.65;
+            this.controls.target.set(0, 1.35, 0);
+            this.controls.update();
+        }
 
-  // Освещение
-  scene.add(new THREE.AmbientLight(0xffffff, 0.8));
-  const light = new THREE.DirectionalLight(0x00ffff, 2);
-  light.position.set(5,10,7);
-  scene.add(light);
+        /**
+         * Инициализация освещения в аниме-стиле для лучшей визуализации модели.
+         */
+        initializeLights() {
+            const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444488, 0.8);
+            hemiLight.position.set(0, 20, 0);
+            this.scene.add(hemiLight);
 
-  // === СОЗДАЁМ ПЕРСОНАЖА ИЗ ПРИМИТИВОВ (ASCII Airi) ===
-  const group = new THREE.Group();
+            const mainLight = new THREE.DirectionalLight(0xfff0ea, 1.2);
+            mainLight.position.set(3, 5, 4);
+            mainLight.castShadow = true;
+            mainLight.shadow.mapSize.width = 2048;
+            mainLight.shadow.mapSize.height = 2048;
+            this.scene.add(mainLight);
 
-  // Голова
-  const head = new THREE.Mesh(
-    new THREE.SphereGeometry(0.8, 32, 24),
-    new THREE.MeshStandardMaterial({ color: 0xff88cc })
-  );
-  group.add(head);
+            const fillLight = new THREE.DirectionalLight(0xe0c3fc, 0.6);
+            fillLight.position.set(-4, 3, -3);
+            this.scene.add(fillLight);
+        }
 
-  // Тело
-  const body = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.5, 0.7, 1.8, 16),
-    new THREE.MeshStandardMaterial({ color: 0xff99dd })
-  );
-  body.position.y = -1.4;
-  group.add(body);
+        /**
+         * Асинхронная загрузка VRM-модели с обработкой прогресса и ошибок.
+         * @returns {Promise<void>}
+         */
+        async loadVrmModel() {
+            const loader = new GLTFLoader();
+            loader.register(parser => new VRMLoaderPlugin(parser));
 
-  // Руки
-  const armGeo = new THREE.CylinderGeometry(0.15, 0.15, 1.6, 8);
-  const leftArm  = new THREE.Mesh(armGeo, new THREE.MeshStandardMaterial({ color: 0xffaadd }));
-  const rightArm = new THREE.Mesh(armGeo, new THREE.MeshStandardMaterial({ color: 0xffaadd }));
-  leftArm.position.set(-0.7, -1.1, 0);
-  leftArm.rotation.z = 0.4;
-  rightArm.position.set(0.7, -1.1, 0);
-  rightArm.rotation.z = -0.4;
-  group.add(leftArm, rightArm);
+            // URL публичной VRM-модели (Female из vrm-samples, waifu-style)
+            const modelUrl = 'https://raw.githubusercontent.com/madjin/vrm-samples/main/vroid/Female.vrm';
 
-  // Ноги
-  const legGeo = new THREE.CylinderGeometry(0.2, 0.25, 1.8, 12);
-  const leftLeg  = new THREE.Mesh(legGeo, new THREE.MeshStandardMaterial({ color: 0xcc77bb }));
-  const rightLeg = new THREE.Mesh(legGeo, new THREE.MeshStandardMaterial({ color: 0xcc77bb }));
-  leftLeg.position.set(-0.35, -2.7, 0);
-  rightLeg.position.set(0.35, -2.7, 0);
-  group.add(leftLeg, rightLeg);
+            try {
+                const gltf = await loader.loadAsync(modelUrl, xhr => {
+                    const progress = (xhr.loaded / xhr.total) * 100;
+                    console.log(`Loading model: ${progress}%`);
+                    if (window.Telegram?.WebApp) {
+                        Telegram.WebApp.HapticFeedback.impactOccurred('light');
+                    }
+                });
 
-  // Глаза (два маленьких шарика)
-  const eyeGeo = new THREE.SphereGeometry(0.15, 16, 16);
-  const leftEye  = new THREE.Mesh(eyeGeo, new THREE.MeshStandardMaterial({ color: 0x00ffff }));
-  const rightEye = new THREE.Mesh(eyeGeo, new THREE.MeshStandardMaterial({ color: 0x00ffff }));
-  leftEye.position.set(-0.3, 0.3, 0.65);
-  rightEye.position.set(0.3, 0.3, 0.65);
-  group.add(leftEye, rightEye);
+                const vrm = gltf.userData.vrm;
+                if (!vrm) {
+                    throw new Error('VRM data not found in loaded GLTF.');
+                }
 
-  scene.add(group);
+                VRMUtils.removeUnnecessaryJoints(vrm.scene);
+                VRMUtils.rotateVRM0(vrm);
 
-  // Управление
-  const controls = new OrbitControls(camera, effect.domElement);
-  controls.enableDamping = true;
-  controls.dampingFactor = 0.07;
-  controls.rotateSpeed = 0.7;
-  controls.minDistance = 3;
-  controls.maxDistance = 10;
+                this.currentVrm = vrm;
+                this.scene.add(vrm.scene);
 
-  // Реакция на касания/мышь
-  let mx = 0, my = 0;
-  addEventListener('pointermove', e => {
-    mx = (e.clientX / innerWidth) * 2 - 1;
-    my = (e.clientY / innerHeight) * 2 - 1;
-  });
+                // Центрирование модели
+                const boundingBox = new THREE.Box3().setFromObject(vrm.scene);
+                const center = boundingBox.getCenter(new THREE.Vector3());
+                vrm.scene.position.sub(center);
+                vrm.scene.position.y -= boundingBox.min.y;
 
-  const clock = new THREE.Clock();
+                // Настройка lookAt и выражений
+                if (vrm.lookAt) {
+                    vrm.lookAt.target = this.camera;
+                }
+                if (vrm.expressionManager) {
+                    vrm.expressionManager.setValue('happy', 0.4);
+                }
 
-  function animate() {
-    requestAnimationFrame(animate);
+                // Инициализация микшера анимаций, если доступны
+                if (gltf.animations && gltf.animations.length > 0) {
+                    this.mixer = new THREE.AnimationMixer(vrm.scene);
+                    gltf.animations.forEach(clip => {
+                        this.mixer.clipAction(clip).play();
+                    });
+                }
 
-    const t = clock.getElapsedTime();
+                if (window.Telegram?.WebApp) {
+                    Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+                }
+            } catch (error) {
+                this.handleError(error);
+            }
+        }
 
-    // Плавное вращение от пальца + автоповорот
-    group.rotation.y = mx * 0.8 + Math.sin(t * 0.3) * 0.2;
-    group.rotation.x = my * 0.4;
+        /**
+         * Привязка слушателей событий (resize и т.д.).
+         */
+        bindEventListeners() {
+            window.addEventListener('resize', () => {
+                this.camera.aspect = window.innerWidth / window.innerHeight;
+                this.camera.updateProjectionMatrix();
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+        }
 
-    // Дыхание и лёгкое покачивание
-    group.position.y = Math.sin(t * 2) * 0.07;
-    group.scale.y = 1 + Math.sin(t * 3) * 0.03;
+        /**
+         * Запуск цикла анимации с использованием requestAnimationFrame.
+         */
+        startAnimationLoop() {
+            const animate = () => {
+                requestAnimationFrame(animate);
+                const deltaTime = this.clock.getDelta();
 
-    controls.update();
-    renderer.render(scene, camera);
-    effect.render(scene, camera);
-  }
+                this.controls.update();
 
-  animate();
+                if (this.currentVrm) {
+                    this.currentVrm.update(deltaTime);
+                }
 
-  // Resize
-  addEventListener('resize', () => {
-    camera.aspect = innerWidth / innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(innerWidth, innerHeight);
-    effect.setSize(innerWidth, innerHeight);
-  });
+                if (this.mixer) {
+                    this.mixer.update(deltaTime);
+                }
+
+                this.renderer.render(this.scene, this.camera);
+            };
+
+            animate();
+        }
+
+        /**
+         * Обработчик ошибок: логирование и уведомление пользователя.
+         * @param {Error} error - Объект ошибки.
+         */
+        handleError(error) {
+            console.error('Application error:', error);
+            if (window.Telegram?.WebApp) {
+                Telegram.WebApp.showAlert(`Ошибка: ${error.message}`);
+                Telegram.WebApp.HapticFeedback.notificationOccurred('error');
+            } else {
+                alert(`Ошибка: ${error.message}`);
+            }
+        }
+    }
+
+    // Запуск приложения
+    new WaifuTelegramApp();
 </script>
 </body>
 </html>
