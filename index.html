@@ -30,7 +30,7 @@
     import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.181.2/build/three.module.js';
     import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.181.2/examples/jsm/controls/OrbitControls.js';
     import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.181.2/examples/jsm/loaders/GLTFLoader.js';
-    import { VRM, VRMUtils, VRMLoaderPlugin } from 'https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.4.4/dist/three-vrm.module.js';
+    import { VRMUtils, VRMLoaderPlugin } from 'https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.4.4/dist/three-vrm.module.js';
 
     class VRMViewer {
         constructor() {
@@ -43,11 +43,14 @@
             this.controls = null;
             this.animationId = null;
             this.isInitialized = false;
+            this.isDestroyed = false;
 
             this.init().catch(this.handleFatalError.bind(this));
         }
 
         async init() {
+            if (this.isDestroyed) return;
+
             try {
                 this.setupTelegram();
                 await this.setupThreeJS();
@@ -80,10 +83,11 @@
             }
         }
 
-        setupThreeJS() {
-            return new Promise(resolve => {
+        async setupThreeJS() {
+            return new Promise((resolve, reject) => {
                 try {
                     this.scene = new THREE.Scene();
+                    
                     this.camera = new THREE.PerspectiveCamera(
                         35,
                         window.innerWidth / window.innerHeight,
@@ -106,6 +110,7 @@
                     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
                     document.body.appendChild(this.renderer.domElement);
+                    
                     this.clock = new THREE.Clock();
 
                     resolve();
@@ -129,6 +134,7 @@
             this.controls.minPolarAngle = Math.PI * 0.35;
             this.controls.maxPolarAngle = Math.PI * 0.65;
             this.controls.target.set(0, 1.35, 0);
+            this.controls.update();
         }
 
         setupLights() {
@@ -141,6 +147,12 @@
             directionalLightMain.castShadow = true;
             directionalLightMain.shadow.mapSize.width = 2048;
             directionalLightMain.shadow.mapSize.height = 2048;
+            directionalLightMain.shadow.camera.near = 0.5;
+            directionalLightMain.shadow.camera.far = 50;
+            directionalLightMain.shadow.camera.left = -10;
+            directionalLightMain.shadow.camera.right = 10;
+            directionalLightMain.shadow.camera.top = 10;
+            directionalLightMain.shadow.camera.bottom = -10;
             this.scene.add(directionalLightMain);
 
             const directionalLightFill = new THREE.DirectionalLight(0xe0c3fc, 0.6);
@@ -208,7 +220,7 @@
 
         setupEventListeners() {
             const resizeHandler = () => {
-                if (!this.camera || !this.renderer) return;
+                if (!this.camera || !this.renderer || this.isDestroyed) return;
                 
                 this.camera.aspect = window.innerWidth / window.innerHeight;
                 this.camera.updateProjectionMatrix();
@@ -218,6 +230,8 @@
             window.addEventListener('resize', resizeHandler, { passive: true });
 
             const visibilityHandler = () => {
+                if (this.isDestroyed) return;
+
                 if (document.hidden && this.animationId) {
                     cancelAnimationFrame(this.animationId);
                     this.animationId = null;
@@ -230,11 +244,13 @@
         }
 
         startRenderLoop() {
-            if (this.animationId) {
-                cancelAnimationFrame(this.animationId);
+            if (this.animationId || this.isDestroyed) {
+                return;
             }
 
             const render = () => {
+                if (this.isDestroyed) return;
+
                 this.animationId = requestAnimationFrame(render);
                 this.update();
                 this.render();
@@ -244,6 +260,8 @@
         }
 
         update() {
+            if (this.isDestroyed) return;
+
             const delta = this.clock.getDelta();
 
             if (this.controls) {
@@ -260,7 +278,7 @@
         }
 
         render() {
-            if (this.renderer && this.scene && this.camera) {
+            if (this.renderer && this.scene && this.camera && !this.isDestroyed) {
                 this.renderer.render(this.scene, this.camera);
             }
         }
@@ -289,13 +307,15 @@
         handleFatalError(error) {
             console.error('Application fatal error:', error);
             
+            this.triggerHapticFeedback('error');
+
             const webApp = window.Telegram?.WebApp;
             if (webApp) {
                 try {
                     webApp.showAlert(`Ошибка загрузки: ${error.message}`);
-                    this.triggerHapticFeedback('error');
                 } catch (uiError) {
                     console.warn('UI error handling failed:', uiError);
+                    alert(`Ошибка загрузки: ${error.message}`);
                 }
             } else {
                 alert(`Ошибка загрузки: ${error.message}`);
@@ -310,22 +330,48 @@
                 this.animationId = null;
             }
 
-            if (this.renderer) {
-                this.renderer.dispose();
+            if (this.mixer) {
+                this.mixer.stopAllAction();
+                this.mixer = null;
             }
 
             if (this.controls) {
                 this.controls.dispose();
+                this.controls = null;
             }
 
-            if (this.mixer) {
-                this.mixer.stopAllAction();
+            if (this.vrm) {
+                this.scene?.remove(this.vrm.scene);
+                this.vrm = null;
             }
 
+            if (this.renderer) {
+                this.renderer.dispose();
+                this.renderer.domElement?.remove();
+                this.renderer = null;
+            }
+
+            if (this.scene) {
+                this.scene.traverse(object => {
+                    if (object.geometry) object.geometry.dispose();
+                    if (object.material) {
+                        if (Array.isArray(object.material)) {
+                            object.material.forEach(material => material.dispose());
+                        } else {
+                            object.material.dispose();
+                        }
+                    }
+                });
+                this.scene = null;
+            }
+
+            this.camera = null;
+            this.clock = null;
             this.isInitialized = false;
         }
 
         destroy() {
+            this.isDestroyed = true;
             this.cleanup();
         }
     }
@@ -343,7 +389,7 @@
     };
 
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initializeApp);
+        document.addEventListener('DOMContentLoaded', initializeApp, { once: true });
     } else {
         initializeApp();
     }
@@ -353,7 +399,7 @@
             viewerInstance.destroy();
             viewerInstance = null;
         }
-    });
+    }, { once: true });
 </script>
 </body>
 </html>
