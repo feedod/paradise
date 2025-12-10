@@ -1,207 +1,155 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <meta name="theme-color" content="#000000">
-    <style>
-        body, html { 
-            margin:0; padding:0; overflow:hidden; background:#000; 
-            height:100vh; width:100vw; display:block; 
-        }
-        /* Для самых новых TWA — учитываем safe-area */
-        body { padding-env(safe-area-inset-top, 0) padding-env(safe-area-inset-bottom, 0); }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Airi 3D</title>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.168.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.168.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.168.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://unpkg.com/telegram-web-app@latest/telegram-web-app.js"></script>
+  <style>
+    body { margin:0; overflow:hidden; background:#000; }
+    canvas { display:block; }
+    #loading { position:fixed; inset:0; background:rgba(0,0,0,0.9); color:#fff; font-family:sans-serif; display:flex; align-items:center; justify-content:center; flex-direction:column; z-index:100; }
+    #loading.hide { opacity:0; pointer-events:none; transition:1s; }
+  </style>
 </head>
 <body>
+  <div id="loading">
+    <h2>Загрузка модели...</h2>
+    <p>0%</p>
+  </div>
 
-<script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script type="module">
+    import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.168.0/examples/jsm/loaders/GLTFLoader.js';
+    import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.168.0/examples/jsm/controls/OrbitControls.js';
 
-<script type="module">
-    'use strict';
+    Telegram.WebApp.ready();
+    Telegram.WebApp.expand();
 
-    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.168.0/build/three.module.js';
-    import { AsciiEffect } from 'https://cdn.jsdelivr.net/npm/three@0.168.0/examples/jsm/effects/AsciiEffect.js';
-    import { TrackballControls } from 'https://cdn.jsdelivr.net/npm/three@0.168.0/examples/jsm/controls/TrackballControls.js';
+    const loadingEl = document.getElementById('loading');
+    const loadingPercent = loadingEl.querySelector('p');
 
-    // === Переменные ===
-    let camera, scene, renderer, effect, controls;
-    let girl;
-    const startTime = Date.now();
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0d0b2e);
 
-    // Telegram Mini App готовность (без expand — мы уже внутри TWA)
-    if (window.Telegram?.WebApp) {
-        Telegram.WebApp.ready();
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 1.4, 2.2);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    document.body.appendChild(renderer.domElement);
+
+    // Свет
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambientLight);
+
+    const dirLight = new THREE.DirectionalLight(0xffa8e2, 1.5);
+    dirLight.position.set(2, 4, 3);
+    scene.add(dirLight);
+
+    const dirLight2 = new THREE.DirectionalLight(0xa8e8ff, 1);
+    dirLight2.position.set(-3, 3, -2);
+    scene.add(dirLight2);
+
+    // Модель (пример — бесплатная аниме-девушка от https://sketchfab.com)
+    const loader = new GLTFLoader();
+    let model, mixer;
+    loader.load(
+      'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gltf/PrimaryIonDrive.glb', // ← замени на свою модель!
+      (gltf) => {
+        model = gltf.scene;
+        model.scale.set(1.2, 1.2, 1.2);
+        model.position.y = -1;
+
+        // Если есть анимации
+        if (gltf.animations && gltf.animations.length) {
+          mixer = new THREE.AnimationMixer(model);
+          const action = mixer.clipAction(gltf.animations[0]); // берём первую анимацию (idle)
+          action.play();
+        }
+
+        scene.add(model);
+        loadingEl.classList.add('hide');
+      },
+      (progress) => {
+        const percent = Math.round((progress.loaded / progress.total) * 100);
+        loadingPercent.textContent = percent + '%';
+      },
+      (err) => console.error(err)
+    );
+
+    // Частицы (эффект "ауры")
+    const particlesGeometry = new THREE.BufferGeometry();
+    const particlesCount =  = 3000;
+    const posArray = new Float32Array(particlesCount * 3);
+
+    for(let i = 0; i < particlesCount * 3; i++) {
+      posArray[i] = (Math.random() - 0.5) * 5;
     }
 
-    // === Инициализация ===
-    function init() {
-        // Камера
-        camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 1, 1000);
-        camera.position.set(0, 20, 380);
+    particlesGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
 
-        // Сцена
-        scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x000000);
+    const particlesMaterial = new THREE.PointsMaterial({
+      size: 0.008,
+      color: 0xff6ec7,
+      transparent: true,
+      opacity: 0.8,
+      blending: THREE.AdditiveBlending
+    });
 
-        // Свет
-        scene.add(new THREE.AmbientLight(0xffffff, 1.2));
-        const pointLight = new THREE.PointLight(0xffbbff, 2.5);
-        pointLight.position.set(200, 300, 400);
-        scene.add(pointLight);
+    const particles = new THREE.Points(particlesGeometry, particlesMaterial);
+    scene.add(particles);
 
-        // === CHIBI-ДЕВОЧКА ===
-        girl = new THREE.Group();
+    // Управление (только вращение и зум)
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.minDistance = 1.5;
+    controls.maxDistance = 4;
+    controls.enablePan = false;
+    controls.maxPolarAngle = Math.PI / 1.8;
 
-        // Голова
-        const head = new THREE.Mesh(
-            new THREE.SphereGeometry(78, 32, 24),
-            new THREE.MeshPhongMaterial({ color: 0xffeecc, flatShading: true })
-        );
-        head.position.y = 82;
-        head.name = "head";
-        girl.add(head);
+    // Реакция на тач
+    let mouseX = 0, mouseY = 0;
+    window.addEventListener('pointermove', (e) => {
+      mouseX = (e.clientX / window.innerWidth) * 2 - 1;
+      mouseY = -(e.clientY / window.innerHeight) * 2 + 1;
+    });
 
-        // Волосы
-        const hair = new THREE.Mesh(
-            new THREE.SphereGeometry(82, 32, 24, 0, Math.PI*2, 0, Math.PI*0.95),
-            new THREE.MeshPhongMaterial({ color: 0xff3399, flatShading: true })
-        );
-        hair.position.y = 92;
-        hair.position.z = -15;
-        girl.add(hair);
-
-        // Пучки (twin tails)
-        const tailGeo = new THREE.SphereGeometry(28, 20, 18);
-        const tailMat = new THREE.MeshPhongMaterial({ color: 0xff1177 });
-
-        const tailL = new THREE.Mesh(tailGeo, tailMat);
-        tailL.position.set(-62, 102, 5);
-        tailL.rotation.z = 0.4;
-        tailL.name = "tailL";
-        girl.add(tailL);
-
-        const tailR = tailL.clone();
-        tailR.position.x = 62;
-        tailR.rotation.z = -0.4;
-        tailR.name = "tailR";
-        girl.add(tailR);
-
-        // Глаза
-        const eyeGeo = new THREE.SphereGeometry(19, 20, 16);
-        const eyeL = new THREE.Mesh(eyeGeo, new THREE.MeshPhongMaterial({ color: 0x000000 }));
-        eyeL.position.set(-32, 92, 68);
-        girl.add(eyeL);
-
-        const eyeR = eyeL.clone();
-        eyeR.position.x = 32;
-        girl.add(eyeR);
-
-        // Блики в глазах
-        const shineGeo = new THREE.SphereGeometry(8);
-        const shineL = new THREE.Mesh(shineGeo, new THREE.MeshPhongMaterial({ color: 0xffffff }));
-        shineL.position.set(-37, 98, 78);
-        girl.add(shineL);
-        const shineR = shineL.clone();
-        shineR.position.x = 27;
-        girl.add(shineR);
-
-        // Тело и юбка
-        girl.add(new THREE.Mesh(
-            new THREE.CylinderGeometry(38, 48, 95, 20),
-            new THREE.MeshPhongMaterial({ color: 0xff99ee, flatShading: true })
-        ));
-
-        girl.add(new THREE.Mesh(
-            new THREE.ConeGeometry(72, 62, 32),
-            new THREE.MeshPhongMaterial({ color: 0xff66ff, flatShading: true })
-        ).position.set(0, -42, 0));
-
-        // Руки
-        const armGeo = new THREE.CylinderGeometry(11, 11, 78, 12);
-        const armMat = new THREE.MeshPhongMaterial({ color: 0xffeecc });
-
-        const armL = new THREE.Mesh(armGeo, armMat);
-        armL.position.set(-52, 28, 0);
-        armL.rotation.z = Math.PI / 4;
-        armL.name = "armL";
-        girl.add(armL);
-
-        const armR = armL.clone();
-        armR.position.x = 52;
-        armR.rotation.z = -Math.PI / 4;
-        armR.name = "armR";
-        girl.add(armR);
-
-        scene.add(girl);
-
-        // Рендерер
-        renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false });
-        renderer.setPixelRatio(devicePixelRatio);
-        renderer.setSize(innerWidth, innerHeight);
-
-        // ASCII-эффект — максимально чёткий и милый
-        effect = new AsciiEffect(renderer, " .,:;i1tfLCG08@#%&", {
-            invert: false,
-            resolution: 0.175,
-            scale: 1
-        });
-        effect.setSize(innerWidth, innerHeight);
-        effect.domElement.style.cssText = `
-            color: #ff99ff;
-            background: #000;
-            font-family: 'Courier New', monospace;
-            font-size: 10px;
-            line-height: 9.5px;
-            letter-spacing: 1px;
-            image-rendering: pixelated;
-        `;
-
-        document.body.appendChild(effect.domElement);
-
-        // Управление
-        controls = new TrackballControls(camera, effect.domElement);
-        controls.rotateSpeed = 3.5;
-        controls.minDistance = 220;
-        controls.maxDistance = 650;
-
-        // Обработка изменения размера
-        window.addEventListener("resize", onResize);
-
-        // Запуск анимации
-        requestAnimationFrame(animate);
-    }
-
-    function onResize() {
-        camera.aspect = innerWidth / innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(innerWidth, innerHeight);
-        effect.setSize(innerWidth, innerHeight);
-    }
+    const clock = new THREE.Clock();
 
     function animate() {
-        requestAnimationFrame(animate);
+      requestAnimationFrame(animate);
 
-        const t = Date.now() - startTime;
+      const elapsedTime = clock.getElapsedTime();
 
-        // Общее покачивание
-        girl.rotation.y = Math.sin(t * 0.0012) * 0.22;
-        girl.position.y = Math.abs(Math.sin(t * 0.0028)) * 22;
+      // Плавное вращение модели при движении мыши/пальца
+      if (model) {
+        model.rotation.y = mouseX * 0.3;
+        model.rotation.x = mouseY * 0.15;
+      }
 
-        // Пучки колышутся
-        girl.getObjectByName("tailL").rotation.z = Math.sin(t * 0.004) * 0.35 + 0.4;
-        girl.getObjectByName("tailR").rotation.z = -Math.sin(t * 0.004) * 0.35 - 0.4;
+      // Вращение частиц
+      particles.rotation.y = elapsedTime * 0.05;
+      particles.rotation.x = elapsedTime * 0.03;
 
-        // Ручки машут
-        girl.getObjectByName("armL").rotation.z = Math.sin(t * 0.006) * 0.7 + 0.8;
-        girl.getObjectByName("armR").rotation.z = -Math.sin(t * 0.006) * 0.7 - 0.8;
+      controls.update();
+      if (mixer) mixer.update(clock.getDelta());
 
-        controls.update();
-        effect.render(scene, camera);
+      renderer.render(scene, camera);
     }
+    animate();
 
-    // === Старт ===
-    init();
-</script>
+    // Адаптация под изменение размера
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
 </body>
 </html>
