@@ -2,9 +2,10 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>VRM Viewer</title>
     <style>
         * {
             -webkit-user-select: none;
@@ -22,6 +23,9 @@
             background: #000;
             touch-action: manipulation;
         }
+        canvas {
+            display: block;
+        }
     </style>
     <script src="https://telegram.org/js/telegram-web-app.js?64"></script>
 </head>
@@ -30,14 +34,16 @@
     import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.181.2/build/three.module.js';
     import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.181.2/examples/jsm/controls/OrbitControls.js';
     import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.181.2/examples/jsm/loaders/GLTFLoader.js';
-    import { VRMUtils, VRMLoaderPlugin } from 'https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.1.0/lib/three-vrm.module.min.js';
+
+    // Правильный импорт актуальной версии three-vrm (3.x)
+    import { VRMLoaderPlugin, VRM, VRMUtils, VRMHumanBoneName } from 'https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.1.0/lib/three-vrm.module.js';
 
     class VRMViewer {
         constructor() {
             this.scene = null;
             this.camera = null;
             this.renderer = null;
-            this.clock = null;
+            this.clock = new THREE.Clock();
             this.vrm = null;
             this.mixer = null;
             this.controls = null;
@@ -45,82 +51,66 @@
             this.isInitialized = false;
             this.isDestroyed = false;
 
-            this.init().catch(this.handleFatalError.bind(this));
+            this.init().catch(err => this.handleFatalError(err));
         }
 
         async init() {
             if (this.isDestroyed) return;
 
-            try {
-                this.setupTelegram();
-                await this.setupThreeJS();
-                this.setupCamera();
-                this.setupControls();
-                this.setupLights();
-                await this.loadModel();
-                this.setupEventListeners();
-                this.startRenderLoop();
-                this.isInitialized = true;
-            } catch (error) {
-                this.handleFatalError(error);
-                throw error;
-            }
+            this.setupTelegram();
+            this.setupRenderer();
+            this.setupScene();
+            this.setupCamera();
+            this.setupControls();
+            this.setupLights();
+            await this.loadModel();
+            this.setupEventListeners();
+            this.startRenderLoop();
+
+            this.isInitialized = true;
         }
 
         setupTelegram() {
-            const webApp = window.Telegram?.WebApp;
-            if (!webApp) return;
+            const wa = window.Telegram?.WebApp;
+            if (!wa) return;
 
-            try {
-                webApp.ready();
-                webApp.expand();
-                webApp.enableClosingConfirmation();
-                webApp.setBackgroundColor('#000000');
-                webApp.setHeaderColor('#000000');
-                webApp.disableVerticalSwipes();
-            } catch (error) {
-                console.warn('Telegram WebApp setup failed:', error);
-            }
+            wa.ready();
+            wa.expand();
+            wa.enableClosingConfirmation();
+            wa.setBackgroundColor('#000000');
+            wa.setHeaderColor('#000000');
+            wa.disableVerticalSwipes();
         }
 
-        async setupThreeJS() {
-            return new Promise((resolve, reject) => {
-                try {
-                    this.scene = new THREE.Scene();
-                    
-                    this.camera = new THREE.PerspectiveCamera(
-                        35,
-                        window.innerWidth / window.innerHeight,
-                        0.1,
-                        100
-                    );
-
-                    this.renderer = new THREE.WebGLRenderer({
-                        antialias: true,
-                        alpha: false,
-                        powerPreference: 'high-performance'
-                    });
-
-                    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-                    this.renderer.setSize(window.innerWidth, window.innerHeight);
-                    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-                    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-                    this.renderer.toneMappingExposure = 1.0;
-                    this.renderer.shadowMap.enabled = true;
-                    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-
-                    document.body.appendChild(this.renderer.domElement);
-                    
-                    this.clock = new THREE.Clock();
-
-                    resolve();
-                } catch (error) {
-                    reject(new Error(`ThreeJS setup failed: ${error.message}`));
-                }
+        setupRenderer() {
+            this.renderer = new THREE.WebGLRenderer({
+                antialias: true,
+                alpha: false,
+                powerPreference: 'high-performance'
             });
+            this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            this.renderer.setSize(window.innerWidth, window.innerHeight);
+            this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+            this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            this.renderer.toneMappingExposure = 1.0;
+            this.renderer.shadowMap.enabled = true;
+            this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+            document.body.appendChild(this.renderer.domElement);
+        }
+
+        setupScene() {
+            this.scene = new THREE.Scene();
+            this.scene.background = new THREE.Color(0x000000);
         }
 
         setupCamera() {
+            this.camera = new THREE.PerspectiveCamera(
+                35,
+                window.innerWidth / window.innerHeight,
+                0.1,
+                100
+            );
             this.camera.position.set(0, 1.4, 2.2);
         }
 
@@ -138,193 +128,159 @@
         }
 
         setupLights() {
-            const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444488, 0.8);
-            hemisphereLight.position.set(0, 20, 0);
-            this.scene.add(hemisphereLight);
+            // Полусферический свет
+            const hemi = new THREE.HemisphereLight(0xffffff, 0x444488, 0.8);
+            hemi.position.set(0, 20, 0);
+            this.scene.add(hemi);
 
-            const directionalLightMain = new THREE.DirectionalLight(0xfff0ea, 1.2);
-            directionalLightMain.position.set(3, 5, 4);
-            directionalLightMain.castShadow = true;
-            directionalLightMain.shadow.mapSize.width = 2048;
-            directionalLightMain.shadow.mapSize.height = 2048;
-            directionalLightMain.shadow.camera.near = 0.5;
-            directionalLightMain.shadow.camera.far = 50;
-            directionalLightMain.shadow.camera.left = -10;
-            directionalLightMain.shadow.camera.right = 10;
-            directionalLightMain.shadow.camera.top = 10;
-            directionalLightMain.shadow.camera.bottom = -10;
-            this.scene.add(directionalLightMain);
+            // Основной ключевой свет
+            const main = new THREE.DirectionalLight(0xfff0ea, 1.4);
+            main.position.set(3, 5, 4);
+            main.castShadow = true;
+            main.shadow.mapSize.width = 2048;
+            main.shadow.mapSize.height = 2048;
+            main.shadow.camera.near = 0.5;
+            main.shadow.camera.far = 50;
+            main.shadow.camera.left = main.shadow.camera.bottom = -10;
+            main.shadow.camera.right = main.shadow.camera.top = 10;
+            this.scene.add(main);
 
-            const directionalLightFill = new THREE.DirectionalLight(0xe0c3fc, 0.6);
-            directionalLightFill.position.set(-4, 3, -3);
-            this.scene.add(directionalLightFill);
+            // Заполняющий свет
+            const fill = new THREE.DirectionalLight(0xe0c3fc, 0.7);
+            fill.position.set(-4, 3, -3);
+            this.scene.add(fill);
         }
 
         async loadModel() {
             const loader = new GLTFLoader();
-            loader.register(parser => new VRMLoaderPlugin(parser));
+            // Правильная регистрация VRM-плагина в новых версиях
+            loader.register((parser) => new VRMLoaderPlugin(parser));
 
-            const modelPath = 'https://raw.githubusercontent.com/mrxz/vrm-sample-models/master/human_male/human_male.vrm';
+            const modelUrl = 'https://raw.githubusercontent.com/mrxz/vrm-sample-models/master/human_male/human_male.vrm';
 
-            try {
-                const gltf = await new Promise((resolve, reject) => {
-                    loader.load(
-                        modelPath,
-                        resolve,
-                        undefined,
-                        reject
-                    );
-                });
+            const gltf = await loader.loadAsync(modelUrl);
 
-                if (!gltf.userData.vrm) {
-                    throw new Error('Invalid VRM model format');
-                }
+            // gltf.scene — это обычная THREE.Group
+            // gltf.userData.vrm — уже готовый VRM объект
+            const vrm = gltf.userData.vrm;
 
-                const vrm = gltf.userData.vrm;
-                
-                VRMUtils.removeUnnecessaryJoints(vrm.scene);
-                VRMUtils.rotateVRM0(vrm);
-
-                this.vrm = vrm;
-                this.scene.add(vrm.scene);
-
-                this.centerModel(vrm.scene);
-
-                if (vrm.lookAt) {
-                    vrm.lookAt.target = this.camera;
-                }
-
-                if (vrm.expressionManager) {
-                    vrm.expressionManager.setValue('happy', 0.4);
-                }
-
-                if (gltf.animations?.length > 0) {
-                    this.mixer = new THREE.AnimationMixer(vrm.scene);
-                    gltf.animations.forEach(clip => {
-                        this.mixer.clipAction(clip).play();
-                    });
-                }
-
-                this.triggerHapticFeedback('success');
-            } catch (error) {
-                throw new Error(`Model loading failed: ${error.message}`);
+            if (!vrm) {
+                throw new Error('Не удалось загрузить VRM-модель');
             }
+
+            // Важно: rotateVRM0 теперь асинхронная!
+            await VRMUtils.rotateVRM0(vrm);
+
+            // Убираем ненужные кости (опционально)
+            VRMUtils.removeUnnecessaryJoints(vrm.scene);
+
+            this.vrm = vrm;
+            this.scene.add(vrm.scene);
+
+            // Центрируем модель
+            this.centerModel(vrm.scene);
+
+            // LookAt на камеру
+            if (vrm.lookAt) {
+                vrm.lookAt.target = this.camera;
+            }
+
+            // Небольшая улыбка
+            if (vrm.expressionManager) {
+                const happyExpression = vrm.expressionManager.getExpression('happy');
+                if (happyExpression) {
+                    vrm.expressionManager.setValue('happy', 0.5);
+                }
+            }
+
+            // Анимации из файла (если есть)
+            if (gltf.animations && gltf.animations.length > 0) {
+                this.mixer = new THREE.AnimationMixer(vrm.scene);
+                gltf.animations.forEach(clip => {
+                    this.mixer.clipAction(clip).play();
+                });
+            }
+
+            this.triggerHaptic('success');
         }
 
-        centerModel(modelScene) {
-            const box = new THREE.Box3().setFromObject(modelScene);
+        centerModel(object) {
+            const box = new THREE.Box3().setFromObject(object);
             const center = box.getCenter(new THREE.Vector3());
-            modelScene.position.sub(center);
-            modelScene.position.y -= box.min.y;
+            const size = box.getSize(new THREE.Vector3());
+
+            object.position.x -= center.x;
+            object.position.z -= center.z;
+            object.position.y -= box.min.y; // ставим на пол
         }
 
         setupEventListeners() {
-            const resizeHandler = () => {
-                if (!this.camera || !this.renderer || this.isDestroyed) return;
-                
+            const onResize = () => {
+                if (this.isDestroyed) return;
                 this.camera.aspect = window.innerWidth / window.innerHeight;
                 this.camera.updateProjectionMatrix();
                 this.renderer.setSize(window.innerWidth, window.innerHeight);
             };
+            window.addEventListener('resize', onResize, { passive: true });
 
-            window.addEventListener('resize', resizeHandler, { passive: true });
-
-            const visibilityHandler = () => {
-                if (this.isDestroyed) return;
-
-                if (document.hidden && this.animationId) {
-                    cancelAnimationFrame(this.animationId);
-                    this.animationId = null;
-                } else if (!document.hidden && this.isInitialized) {
+            const onVisibilityChange = () => {
+                if (document.hidden) {
+                    if (this.animationId) {
+                        cancelAnimationFrame(this.animationId);
+                        this.animationId = null;
+                    }
+                } else if (this.isInitialized && !this.animationId) {
                     this.startRenderLoop();
                 }
             };
-
-            document.addEventListener('visibilitychange', visibilityHandler);
+            document.addEventListener('visibilitychange', onVisibilityChange);
         }
 
         startRenderLoop() {
-            if (this.animationId || this.isDestroyed) {
-                return;
-            }
+            if (this.animationId || this.isDestroyed) return;
 
-            const render = () => {
-                if (this.isDestroyed) return;
+            const animate = () => {
+                this.animationId = requestAnimationFrame(animate);
 
-                this.animationId = requestAnimationFrame(render);
-                this.update();
-                this.render();
+                const delta = this.clock.getDelta();
+
+                if (this.controls) this.controls.update();
+                if (this.vrm) this.vrm.update(delta);
+                if (this.mixer) this.mixer.update(delta);
+
+                this.renderer.render(this.scene, this.camera);
             };
 
-            render();
+            animate();
         }
 
-        update() {
-            if (this.isDestroyed) return;
-
-            const delta = this.clock.getDelta();
-
-            if (this.controls) {
-                this.controls.update();
-            }
-
-            if (this.vrm) {
-                this.vrm.update(delta);
-            }
-
-            if (this.mixer) {
-                this.mixer.update(delta);
-            }
-        }
-
-        render() {
-            if (this.renderer && this.scene && this.camera && !this.isDestroyed) {
-                this.renderer.render(this.scene, this.camera);
-            }
-        }
-
-        triggerHapticFeedback(type) {
-            const webApp = window.Telegram?.WebApp;
-            if (!webApp?.HapticFeedback) return;
-
-            try {
-                switch (type) {
-                    case 'success':
-                        webApp.HapticFeedback.notificationOccurred('success');
-                        break;
-                    case 'error':
-                        webApp.HapticFeedback.notificationOccurred('error');
-                        break;
-                    case 'warning':
-                        webApp.HapticFeedback.notificationOccurred('warning');
-                        break;
-                }
-            } catch (error) {
-                console.warn('Haptic feedback failed:', error);
+        triggerHaptic(type = 'success') {
+            const wa = window.Telegram?.WebApp;
+            if (wa?.HapticFeedback) {
+                wa.HapticFeedback.notificationOccurred(type);
             }
         }
 
         handleFatalError(error) {
-            console.error('Application fatal error:', error);
-            
-            this.triggerHapticFeedback('error');
+            console.error('Fatal error:', error);
 
-            const webApp = window.Telegram?.WebApp;
-            if (webApp) {
-                try {
-                    webApp.showAlert(`Ошибка загрузки: ${error.message}`);
-                } catch (uiError) {
-                    console.warn('UI error handling failed:', uiError);
-                    alert(`Ошибка загрузки: ${error.message}`);
-                }
+            this.triggerHaptic('error');
+
+            const wa = window.Telegram?.WebApp;
+            const msg = `Ошибка загрузки модели:\n${error.message || error}`;
+
+            if (wa) {
+                wa.showAlert(msg);
             } else {
-                alert(`Ошибка загрузки: ${error.message}`);
+                alert(msg);
             }
 
-            this.cleanup();
+            this.destroy();
         }
 
-        cleanup() {
+        destroy() {
+            this.isDestroyed = true;
+
             if (this.animationId) {
                 cancelAnimationFrame(this.animationId);
                 this.animationId = null;
@@ -332,13 +288,10 @@
 
             if (this.mixer) {
                 this.mixer.stopAllAction();
-                this.mixer = null;
+                this.mixer.uncacheRoot(this.vrm?.scene);
             }
 
-            if (this.controls) {
-                this.controls.dispose();
-                this.controls = null;
-            }
+            if (this.controls) this.controls.dispose();
 
             if (this.vrm) {
                 this.scene?.remove(this.vrm.scene);
@@ -347,59 +300,40 @@
 
             if (this.renderer) {
                 this.renderer.dispose();
-                this.renderer.domElement?.remove();
+                this.renderer.forceContextLoss?.();
+                this.renderer.domElement.remove();
                 this.renderer = null;
             }
 
-            if (this.scene) {
-                this.scene.traverse(object => {
-                    if (object.geometry) object.geometry.dispose();
-                    if (object.material) {
-                        if (Array.isArray(object.material)) {
-                            object.material.forEach(material => material.dispose());
-                        } else {
-                            object.material.dispose();
-                        }
-                    }
-                });
-                this.scene = null;
-            }
-
+            this.scene = null;
             this.camera = null;
-            this.clock = null;
-            this.isInitialized = false;
-        }
-
-        destroy() {
-            this.isDestroyed = true;
-            this.cleanup();
         }
     }
 
-    let viewerInstance = null;
-
-    const initializeApp = () => {
-        if (viewerInstance) return;
-        
-        try {
-            viewerInstance = new VRMViewer();
-        } catch (error) {
-            console.error('Failed to initialize VRM viewer:', error);
-        }
+    // Запуск приложения
+    const start = () => {
+        if (window.vrmViewer) return;
+        window.vrmViewer = new VRMViewer();
     };
 
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initializeApp, { once: true });
+        document.addEventListener('DOMContentLoaded', start, { once: true });
     } else {
-        initializeApp();
+        start();
     }
 
-    window.addEventListener('beforeunload', () => {
-        if (viewerInstance) {
-            viewerInstance.destroy();
-            viewerInstance = null;
+    // Очистка при закрытии страницы
+    window.addEventListener('pagehide', () => {
+        if (window.vrmViewer) {
+            window.vrmViewer.destroy();
+            window.vrmViewer = null;
         }
-    }, { once: true });
+    });
+    window.addEventListener('beforeunload', () => {
+        if (window.vrmViewer) {
+            window.vrmViewer.destroy();
+        }
+    });
 </script>
 </body>
 </html>
