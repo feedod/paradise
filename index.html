@@ -42,7 +42,7 @@
     import * as THREE from 'three';
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-    import { VRMLoaderPlugin, VRMUtils, VRMHumanBoneName } from 'https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.1.0/lib/three-vrm.module.js';
+    import { VRMLoaderPlugin, VRMUtils, VRMHumanBoneName, VRMLookAt } from 'https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.1.0/lib/three-vrm.module.js';
 
     class VRMViewer {
         constructor() {
@@ -55,6 +55,12 @@
             this.controls = null;
             this.animationId = null;
             this.isDestroyed = false;
+            this.lookTarget = new THREE.Vector3();
+            this.raycaster = new THREE.Raycaster();
+            this.plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+            this.lastInteractionTime = 0;
+            this.pointerPosition = new THREE.Vector2();
+            this.intersectPoint = new THREE.Vector3();
 
             this.init().catch(err => this.handleFatalError(err));
         }
@@ -103,8 +109,8 @@
             this.controls.enableDamping = true;
             this.controls.dampingFactor = 0.05;
             this.controls.screenSpacePanning = false;
-            this.controls.minDistance = 1.2;
-            this.controls.maxDistance = 4.0;
+            this.controls.minDistance = 0.5;
+            this.controls.maxDistance = 5.0;
             this.controls.minPolarAngle = Math.PI * 0.35;
             this.controls.maxPolarAngle = Math.PI * 0.65;
             this.controls.target.set(0, 1.35, 0);
@@ -138,8 +144,14 @@
             const loader = new GLTFLoader();
             loader.register(parser => new VRMLoaderPlugin(parser));
 
-            const modelUrl = 'https://raw.githubusercontent.com/vrm-c/UniVRM/master/Tests/Models/Alicia_vrm-0.51/AliciaSolid_vrm-0.51.vrm';
-            const gltf = await loader.loadAsync(modelUrl);
+            const modelUrl = 'https://raw.githubusercontent.com/mrxz/vrm-sample-models/master/human_male/human_male.vrm';
+            let gltf;
+            try {
+                gltf = await loader.loadAsync(modelUrl);
+            } catch (e) {
+                const fallbackUrl = 'https://raw.githubusercontent.com/vrm-c/UniVRM/master/Tests/Models/Alicia_vrm-0.51/AliciaSolid_vrm-0.51.vrm';
+                gltf = await loader.loadAsync(fallbackUrl);
+            }
             const vrm = gltf.userData.vrm;
 
             if (!vrm) throw new Error('Failed to load VRM model');
@@ -155,28 +167,33 @@
 
             this.centerModel(vrm.scene);
 
-            // Center on model
             const box = new THREE.Box3().setFromObject(vrm.scene);
             const modelCenter = box.getCenter(new THREE.Vector3());
             const modelSize = box.getSize(new THREE.Vector3());
-            this.controls.target.set(0, modelCenter.y, 0);
-            this.camera.position.set(0, modelCenter.y, modelSize.z * 1.5 + 1);
-            this.controls.minDistance = modelSize.z * 0.5;
-            this.controls.maxDistance = modelSize.z * 5;
+            const headHeight = modelCenter.y + modelSize.y / 4; // Approximate head position
+
+            this.controls.target.set(0, headHeight, 0);
+            this.camera.position.set(0, headHeight, modelSize.z * 1.2 + 0.5);
+            this.controls.minDistance = modelSize.z * 0.3;
+            this.controls.maxDistance = modelSize.z * 4;
             this.controls.update();
 
-            // Lower arms
             const leftUpperArm = vrm.humanoid.getNormalizedBoneNode(VRMHumanBoneName.LeftUpperArm);
             if (leftUpperArm) {
-                leftUpperArm.rotation.z = Math.PI / 2.5; // Adjust angle for natural down position
+                leftUpperArm.rotation.x = -Math.PI / 6;
+                leftUpperArm.rotation.z = Math.PI / 12;
             }
 
             const rightUpperArm = vrm.humanoid.getNormalizedBoneNode(VRMHumanBoneName.RightUpperArm);
             if (rightUpperArm) {
-                rightUpperArm.rotation.z = -Math.PI / 2.5; // Adjust angle for natural down position
+                rightUpperArm.rotation.x = -Math.PI / 6;
+                rightUpperArm.rotation.z = -Math.PI / 12;
             }
 
-            if (vrm.lookAt) vrm.lookAt.target = this.camera;
+            vrm.lookAt.applier.lookAtType = VRMLookAt.BONE;
+
+            this.lookTarget.copy(this.camera.position);
+            vrm.lookAt.target = this.lookTarget;
 
             if (vrm.expressionManager) vrm.expressionManager.setValue('happy', 0.5);
 
@@ -189,19 +206,22 @@
         }
 
         centerModel(object) {
-            const box = new THREE.Box3().setFromObject(object);
+            const box = new THREE.Box3().setFromObject(object, true);
             const center = box.getCenter(new THREE.Vector3());
-            object.position.sub(center);
-            object.position.y -= box.min.y;
+            const size = box.getSize(new THREE.Vector3());
+            object.position.x -= center.x;
+            object.position.z -= center.z;
+            object.position.y = -box.min.y;
         }
 
         setupEventListeners() {
-            window.addEventListener('resize', () => {
+            const resizeObserver = new ResizeObserver(() => {
                 if (this.isDestroyed) return;
                 this.camera.aspect = window.innerWidth / window.innerHeight;
                 this.camera.updateProjectionMatrix();
                 this.renderer.setSize(window.innerWidth, window.innerHeight);
-            }, { passive: true });
+            });
+            resizeObserver.observe(document.body);
 
             document.addEventListener('visibilitychange', () => {
                 if (document.hidden) {
@@ -213,6 +233,29 @@
                     this.startRenderLoop();
                 }
             });
+
+            const updatePointer = (x, y) => {
+                this.pointerPosition.x = (x / window.innerWidth) * 2 - 1;
+                this.pointerPosition.y = - (y / window.innerHeight) * 2 + 1;
+                this.lastInteractionTime = performance.now();
+                this.updateLookTarget();
+            };
+
+            this.renderer.domElement.addEventListener('pointermove', (event) => {
+                updatePointer(event.clientX, event.clientY);
+            });
+
+            this.renderer.domElement.addEventListener('touchmove', (event) => {
+                if (event.touches.length > 0) {
+                    updatePointer(event.touches[0].clientX, event.touches[0].clientY);
+                }
+            }, { passive: true });
+        }
+
+        updateLookTarget() {
+            this.raycaster.setFromCamera(this.pointerPosition, this.camera);
+            this.raycaster.ray.intersectPlane(this.plane, this.intersectPoint);
+            this.lookTarget.copy(this.intersectPoint);
         }
 
         startRenderLoop() {
@@ -221,9 +264,20 @@
             const animate = () => {
                 this.animationId = requestAnimationFrame(animate);
                 const delta = this.clock.getDelta();
+                const time = performance.now();
+
                 if (this.controls) this.controls.update();
-                if (this.vrm) this.vrm.update(delta);
+
+                if (this.vrm) {
+                    if (time - this.lastInteractionTime > 500) {
+                        this.lookTarget.lerp(this.camera.position, 0.02);
+                    }
+                    this.vrm.lookAt.target = this.lookTarget;
+                    this.vrm.update(delta);
+                }
+
                 if (this.mixer) this.mixer.update(delta);
+
                 this.renderer.render(this.scene, this.camera);
             };
 
