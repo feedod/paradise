@@ -2,392 +2,889 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <title>Airi Companion</title>
     <style>
-        *{box-sizing:border-box;margin:0;padding:0;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
-        html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:system-ui,sans-serif}
-        canvas{display:block;position:fixed;inset:0;width:100%;height:100%;z-index:1}
-        #chat-interface{
-            position:fixed;bottom:0;left:0;width:100%;max-width:480px;height:100%;z-index:10;
-            display:flex;flex-direction:column;pointer-events:none
+        * {
+            box-sizing: border-box;
+            -webkit-user-select: none !important;
+            -moz-user-select: none !important;
+            user-select: none !important;
+            -webkit-tap-highlight-color: transparent;
+            -webkit-touch-callout: none;
         }
-        #messages-list{
-            flex:1;overflow-y:auto;padding:16px 16px 8px;display:flex;flex-direction:column;
-            background:rgba(0,0,0,0.4);backdrop-filter:blur(20px) saturate(180%);
-            border-radius:20px 20px 0 0;pointer-events:auto;
-            scrollbar-width:none;-ms-overflow-style:none
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+            touch-action: none;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
         }
-        #messages-list::-webkit-scrollbar{display:none}
-        #messages-list:empty{display:none}
-        .message{
-            max-width:85%;padding:10px 14px;margin-bottom:10px;border-radius:18px;
-            backdrop-filter:blur(20px) saturate(180%);
-            background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);
-            color:#fff;font-size:15px;line-height:1.css3;word-wrap:break-word;
-            animation:msgIn .4s ease-out forwards;opacity:0
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
         }
-        .message.user{align-self:flex-end;background:rgba(0,122,255,0.25);border-color:rgba(0,122,255,0.4)}
-        .message-time{font-size:11px;color:rgba(255,255,255,0.6);margin-top:4px;text-align:right}
-        .typing{display:flex;align-items:center;padding:10px 14px}
-        .typing span{width:8px;height:8px;background:#fff;border-radius:50%;margin:0 3px;
-            animation:pulse 1.4s infinite}
-        .typing span:nth-child(2){animation-delay:.2s}
-        .typing span:nth-child(3){animation-delay:.4s}
-        @keyframes pulse{0%,100%{transform:scale(0)}50%{transform:scale(1)}}
-        @keyframes msgIn{to{opacity:1;transform:translateY(0)}}
-        #input-bar{
-            padding:12px 16px;background:rgba(0,0,0,0.5);backdrop-filter:blur(20px);
-            border-radius:0 0 20px 20px;pointer-events:auto;display:flex;align-items:center;gap:12px
+        #chat-interface {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            max-width: 50vw;
+            height: 100%;
+            z-index: 2;
+            transition: bottom 0.3s ease, max-width 0.3s ease;
+            pointer-events: auto;
+            display: flex;
+            flex-direction: column;
         }
-        #chat-input{
-            flex:1;padding:12px 16px;border:none;border-radius:24px;background:rgba(255,255,255,0.08);
-            color:#fff;font-size:16px;backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.15)
+        #messages-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px 16px;
+            display: flex;
+            flex-direction: column;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(20px) saturate(180%);
+            border-radius: 16px 16px 0 0;
         }
-        #chat-input:focus{outline:none;background:rgba(255,255,255,0.14)}
-        button{
-            width:48px;height:48px;border:none;border-radius:50%;background:rgba(255,255,255,0.08);
-            backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.15);
-            display:flex;align-items:center;justify-content:center;cursor:pointer;transition:.3s
+        #messages-list::-webkit-scrollbar {
+            display: none;
         }
-        #voice-btn.listening{animation:micPulse 1.5s infinite}
-        @keyframes micPulse{0%{box-shadow:0 0 0 0 rgba(0,122,255,.7)}70%{box-shadow:0 0 0 12px transparent}100%{box-shadow:0 0 0 0 transparent}}
-        svg{width:24px;height:24px;fill:#fff}
-        #send-btn.disabled svg{fill:#666}
+        #messages-list:empty {
+            display: none;
+        }
+        .message-bubble {
+            max-width: 100%;
+            padding: 8px 12px;
+            border-radius: 16px;
+            margin-bottom: 8px;
+            font-size: 14px;
+            line-height: 1.3;
+            word-wrap: break-word;
+            backdrop-filter: blur(20px) saturate(180%);
+            background-color: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+            position: relative;
+            animation: slideIn 0.5s ease-out;
+            opacity: 0;
+            transform: translateX(-100%);
+        }
+        .message-bubble.user {
+            align-self: flex-end;
+            background-color: rgba(0, 122, 255, 0.2);
+            border-color: rgba(0, 122, 255, 0.3);
+            transform: translateX(100%);
+        }
+        .message-bubble.ai {
+            align-self: flex-start;
+            background-color: rgba(255, 255, 255, 0.05);
+            border-color: rgba(255, 255, 255, 0.1);
+        }
+        .message-bubble.animate-in {
+            opacity: 1;
+            transform: translateX(0);
+        }
+        .message-time {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.6);
+            margin-top: 4px;
+            text-align: right;
+        }
+        .loading-dots {
+            display: flex;
+            justify-content: flex-start;
+            align-items: center;
+            height: 20px;
+            padding: 8px 12px;
+        }
+        .dot {
+            width: 6px;
+            height: 6px;
+            margin: 0 2px;
+            background: #fff;
+            border-radius: 50%;
+            animation: dotPulse 1.2s infinite ease-in-out;
+        }
+        .dot:nth-child(2) { animation-delay: 0.2s; }
+        .dot:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes dotPulse {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+        #input-container {
+            display: flex;
+            align-items: center;
+            padding: 12px 16px;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(20px) saturate(180%);
+            border-radius: 0 0 16px 16px;
+        }
+        #chat-input {
+            flex: 1;
+            padding: 12px 16px;
+            border: none;
+            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            color: #fff;
+            font-size: 16px;
+            backdrop-filter: blur(20px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+        #chat-input:focus {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.2);
+            outline: none;
+        }
+        #chat-input:disabled {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+        #voice-button, #send-button {
+            margin-left: 12px;
+            padding: 0;
+            border: none;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 48px;
+            height: 48px;
+            transition: all 0.3s ease;
+        }
+        #voice-button.disabled, #send-button.disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+        #voice-button.listening {
+            animation: micPulse 1.5s infinite;
+        }
+        @keyframes micPulse {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(0, 122, 255, 0.7); }
+            70% { transform: scale(1.05); box-shadow: 0 0 0 12px rgba(0, 122, 255, 0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(0, 122, 255, 0); }
+        }
+        .mic-icon, .send-icon {
+            width: 24px;
+            height: 24px;
+            fill: #fff;
+            transition: fill 0.3s ease;
+        }
+        #send-button.disabled .send-icon {
+            fill: #888;
+        }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-100%); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
     </style>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script type="importmap">
-    {
-        "imports": {
-            "three": "https://cdn.jsdelivr.net/npm/three@0.181.2/build/three.module.js",
-            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.181.2/examples/jsm/",
-            "three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.1.0/lib/three-vrm.module.js"
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.181.2/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.181.2/examples/jsm/",
+                "three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.1.0/lib/three-vrm.module.js"
+            }
         }
-    }
     </script>
 </head>
 <body>
-<div id="chat-interface">
-    <div id="messages-list"></div>
-    <div id="input-bar">
-        <input type="text" id="chat-input" placeholder="Сообщение…">
-        <button id="voice-btn"><svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5.76-5 5.76v2.24h-2v-2.24c-2.76 0-5-2.24-5-5.76h2c0 1.66 1.34 3 3 3s3-1.34 3-3h2z"/></svg></button>
-        <button id="send-btn" style="display:none"><svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></button>
+    <div id="chat-interface">
+        <div id="messages-list"></div>
+        <div id="input-container">
+            <input type="text" id="chat-input" placeholder="Type a message...">
+            <button id="voice-button">
+                <svg class="mic-icon" viewBox="0 0 24 24">
+                    <path d="M12 2C10.3431 2 9 3.34315 9 5V11C9 12.6569 10.3431 14 12 14C13.6569 14 15 12.6569 15 11V5C15 3.34315 13.6569 2 12 2ZM7 5C7 2.23858 9.23858 0 12 0C14.7614 0 17 2.23858 17 5V11C17 13.7614 14.7614 16 12 16C9.23858 16 7 13.7614 7 11V5ZM5 10C5.55228 10 6 10.4477 6 11C6 14.3094 8.05719 17.1659 11 17.8435V20H10C9.44772 20 9 20.4477 9 21C9 21.5523 9.44772 22 10 22H14C14.5523 22 15 21.5523 15 21C15 20.4477 14.5523 20 14 20H13V17.8435C15.9428 17.1659 18 14.3094 18 11C18 10.4477 18.4477 10 19 10C19.5523 10 20 10.4477 20 11C20 15.4183 16.4183 19 12 19C7.58172 19 4 15.4183 4 11C4 10.4477 4.44772 10 5 10Z"/>
+                </svg>
+            </button>
+            <button id="send-button" style="display: none;">
+                <svg class="send-icon" viewBox="0 0 24 24">
+                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                </svg>
+            </button>
+        </div>
     </div>
-</div>
-
 <script type="module">
-import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { VRMLoaderPlugin, VRMUtils, VRMHumanBoneName } from 'three-vrm';
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { VRMLoaderPlugin, VRMUtils, VRMHumanBoneName, VRMLookAt } from 'three-vrm';
 
-class AiriCompanion {
-    constructor() {
-        this.scene = new THREE.Scene();
-        this.camera = new THREE.PerspectiveCamera(35, innerWidth/innerHeight, 0.1, 1000);
-        this.renderer = new THREE.WebGLRenderer({antialias:true, alpha:false, powerPreference:'high-performance'});
-        this.clock = new THREE.Clock();
-        this.vrm = null;
-        this.mixer = null;
-        this.lookAtTarget = new THREE.Object3D();
-        this.scene.add(this.lookAtTarget);
-        this.blinkTimer = 0;
-        this.speech = window.speechSynthesis;
-        this.recognition = null;
-        this.isListening = false;
-        this.audioCtx = null;
-        this.analyser = null;
-        this.micStream = null;
-        this.speechTimeout = null;
+    class CompanionViewer {
+        constructor() {
+            this.scene = new THREE.Scene();
+            this.camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 1000);
+            this.renderer = new THREE.WebGLRenderer({ 
+                antialias: true, 
+                alpha: false, 
+                powerPreference: 'high-performance', 
+                logarithmicDepthBuffer: true 
+            });
+            this.clock = new THREE.Clock();
+            this.vrm = null;
+            this.mixer = null;
+            this.controls = null;
+            this.animationId = null;
+            this.isDestroyed = false;
+            this.lookTarget = new THREE.Object3D();
+            this.scene.add(this.lookTarget);
+            this.raycaster = new THREE.Raycaster();
+            this.plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+            this.lastInteractionTime = 0;
+            this.pointerPosition = new THREE.Vector2();
+            this.intersectPoint = new THREE.Vector3();
+            this.blinkTimer = 0;
+            this.speechSynth = window.speechSynthesis;
+            this.recognition = null;
+            this.isListening = false;
+            this.lipSyncInterval = null;
+            this.currentUtterance = null;
+            this.messages = [];
+            this.audioContext = null;
+            this.analyser = null;
+            this.micStream = null;
+            this.micVolume = 0;
+            this.keyboardHeight = 0;
+            this.defaultViewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+            this.hasMicAccess = false;
+            this.preferredMicDeviceId = null;
+            this.speechTimeout = null;
 
-        if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
-            const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-            this.recognition = new SR();
-            this.recognition.lang = 'ru-RU';
-            this.recognition.continuous = false;
-            this.recognition.interimResults = false;
-            this.recognition.onresult = e => this.onSpeechResult(e);
-            this.recognition.onerror = () => this.stopListening();
-            this.recognition.onend = () => this.stopListening();
-        }
+            this.initAudioDevices().catch(console.error);
 
-        this.init();
-    }
-
-    async init() {
-        this.setupRenderer();
-        this.setupCamera();
-        this.setupLights();
-        await this.loadModel();
-        this.setupControls(); // отключено вращение
-        this.setupChat();
-        this.startLoop();
-
-        // Приветствие при открытии
-        setTimeout(() => this.speak("Привет! Я Айри. Чем могу помочь?"), 800);
-    }
-
-    setupRenderer() {
-        this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
-        this.renderer.setSize(innerWidth, innerHeight);
-        this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        document.body.appendChild(this.renderer.domElement);
-    }
-
-    setupCamera() {
-        this.camera.position.set(0, 1.45, 3.2);
-    }
-
-    setupLights() {
-        this.scene.add(new THREE.HemisphereLight(0xffffff, 0x444488, 0.9));
-        const dir = new THREE.DirectionalLight(0xfff0ea, 1.4);
-        dir.position.set(3,5,4);
-        this.scene.add(dir);
-        const fill = new THREE.DirectionalLight(0xe0c3fc, 0.7);
-        fill.position.set(-4,3,-3);
-        this.scene.add(fill);
-    }
-
-    async loadModel() {
-        const loader = new GLTFLoader();
-        loader.register(p => new VRMLoaderPlugin(p));
-        const gltf = await loader.loadAsync('https://raw.githubusercontent.com/vrm-c/UniVRM/master/Tests/Models/Alicia_vrm-0.51/AliciaSolid_vrm-0.51.vrm');
-        const vrm = gltf.userData.vrm;
-
-        if (parseFloat(vrm.meta?.vrmVersion || '0') < 1) await VRMUtils.rotateVRM0(vrm);
-        VRMUtils.removeUnnecessaryJoints(vrm.scene);
-
-        this.vrm = vrm;
-        this.scene.add(vrm.scene);
-
-        // Центрируем и опускаем руки
-        const box = new THREE.Box3().setFromObject(vrm.scene);
-        const center = box.getCenter(new THREE.Vector3());
-        vrm.scene.position.sub(center);
-        vrm.scene.position.y -= box.min.y;
-
-        const lArm = vrm.humanoid.getNormalizedBoneNode(VRMHumanBoneName.LeftUpperArm);
-        const rArm = vrm.humanoid.getNormalizedBoneNode(VRMHumanBoneName.RightUpperArm);
-        if (lArm) lArm.rotation.set(-0.8, 0, 0.4);
-        if (rArm) rArm.rotation.set(-0.8, 0, -0.4);
-
-        if (vrm.lookAt) {
-            vrm.lookAt.applier.lookAtType = 'bone';
-            vrm.lookAt.target = this.lookAtTarget;
-        }
-
-        if (vrm.expressionManager) vrm.expressionManager.setValue('happy', 0.4);
-
-        if (gltf.animations?.length) {
-            this.mixer = new THREE.AnimationMixer(vrm.scene);
-            gltf.animations.forEach(c => this.mixer.clipAction(c).play());
-        }
-    }
-
-    setupControls() {
-        const ctrl = new OrbitControls(this.camera, this.renderer.domElement);
-        ctrl.enableRotate = false;
-        ctrl.enableZoom = false;
-        ctrl.enablePan = false;
-        this.controls = ctrl;
-    }
-
-    setupChat() {
-        const input = document.getElementById('chat-input');
-        const voiceBtn = document.getElementById('voice-btn');
-        const sendBtn = document.getElementById('send-btn');
-
-        const toggleSend = () => {
-            const hasText = input.value.trim().length > 0;
-            voiceBtn.style.display = hasText ? 'none' : 'flex';
-            sendBtn.style.display = hasText ? 'flex' : 'none';
-            sendBtn.classList.toggle('disabled', !hasText);
-        };
-
-        input.addEventListener('input', toggleSend);
-        input.addEventListener('keypress', e => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                if (input.value.trim()) this.sendMessage(input.value.trim());
+            if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                this.recognition = new SpeechRecognition();
+                this.recognition.continuous = false;
+                this.recognition.interimResults = false;
+                this.recognition.lang = navigator.language || 'ru-RU';
+                this.recognition.onresult = (event) => this.handleSpeechResult(event);
+                this.recognition.onerror = (event) => this.handleSpeechError(event);
+                this.recognition.onend = () => this.handleSpeechEnd();
             }
-        });
 
-        sendBtn.addEventListener('click', () => {
-            if (input.value.trim()) this.sendMessage(input.value.trim());
-        });
-
-        voiceBtn.addEventListener('click', () => this.toggleListening());
-
-        // Тап по экрану во время записи — остановить
-        this.renderer.domElement.addEventListener('touchstart', () => {
-            if (this.isListening) this.stopListening();
-        });
-    }
-
-    async toggleListening() {
-        if (this.isListening) {
-            this.stopListening();
-            return;
+            this.init().catch(err => this.handleFatalError(err));
         }
-        try {
-            this.isListening = true;
-            document.getElementById('voice-btn').classList.add('listening');
-            document.getElementById('chat-input').disabled = true;
 
-            // Визуализация громкости
-            this.audioCtx = new (AudioContext || webkitAudioContext)();
-            this.micStream = await navigator.mediaDevices.getUserMedia({audio:true});
-            const source = this.audioCtx.createMediaStreamSource(this.micStream);
-            this.analyser = this.audioCtx.createAnalyser();
+        async initAudioDevices() {
+            try {
+                await navigator.mediaDevices.getUserMedia({ audio: true });
+                this.hasMicAccess = true;
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const audioInputs = devices.filter(d => d.kind === 'audioinput');
+                const headsetMic = audioInputs.find(d => d.label.toLowerCase().includes('headset') || d.label.toLowerCase().includes('earphone'));
+                this.preferredMicDeviceId = headsetMic ? headsetMic.deviceId : audioInputs[0]?.deviceId;
+            } catch (err) {
+                console.warn('Mic access denied', err);
+                this.hasMicAccess = false;
+            }
+            this.updateMicButtonState();
+        }
+
+        async init() {
+            if (this.isDestroyed) return;
+
+            this.setupTelegram();
+            this.setupRenderer();
+            this.setupCamera();
+            this.setupControls();
+            this.setupLights();
+            await this.loadModel();
+            this.setupEventListeners();
+            this.setupChatInterface();
+            this.startRenderLoop();
+
+            this.speak('Привет! Чем могу помочь?');
+        }
+
+        setupTelegram() {
+            const wa = window.Telegram?.WebApp;
+            if (!wa) return;
+            wa.ready();
+            wa.setBackgroundColor('#000000');
+            wa.setHeaderColor('#000000');
+            wa.disableVerticalSwipes();
+        }
+
+        setupRenderer() {
+            this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+            this.renderer.setSize(window.innerWidth, window.innerHeight);
+            this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+            this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            this.renderer.toneMappingExposure = 1.0;
+            this.renderer.shadowMap.enabled = false;
+            document.body.appendChild(this.renderer.domElement);
+        }
+
+        setupCamera() {
+            this.camera.position.set(0, 1.4, 3.5);
+        }
+
+        setupControls() {
+            this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+            this.controls.enableDamping = true;
+            this.controls.dampingFactor = 0.05;
+            this.controls.screenSpacePanning = false;
+            this.controls.enableRotate = false;
+            this.controls.enableZoom = false;
+            this.controls.enablePan = false;
+            this.controls.minDistance = 0.5;
+            this.controls.maxDistance = 5.0;
+            this.controls.minPolarAngle = Math.PI * 0.35;
+            this.controls.maxPolarAngle = Math.PI * 0.65;
+            this.controls.target.set(0, 1.35, 0);
+            this.controls.update();
+        }
+
+        setupLights() {
+            const hemi = new THREE.HemisphereLight(0xffffff, 0x444488, 0.8);
+            hemi.position.set(0, 20, 0);
+            this.scene.add(hemi);
+
+            const main = new THREE.DirectionalLight(0xfff0ea, 1.4);
+            main.position.set(3, 5, 4);
+            this.scene.add(main);
+
+            const fill = new THREE.DirectionalLight(0xe0c3fc, 0.7);
+            fill.position.set(-4, 3, -3);
+            this.scene.add(fill);
+        }
+
+        async loadModel() {
+            const loader = new GLTFLoader();
+            loader.register(parser => new VRMLoaderPlugin(parser));
+
+            const modelUrl = 'https://raw.githubusercontent.com/vrm-c/UniVRM/master/Tests/Models/Alicia_vrm-0.51/AliciaSolid_vrm-0.51.vrm';
+            const gltf = await loader.loadAsync(modelUrl);
+            const vrm = gltf.userData.vrm;
+
+            if (!vrm) throw new Error('Failed to load VRM model');
+
+            const version = parseFloat(vrm.meta.vrmVersion || '0');
+            if (version < 1) {
+                await VRMUtils.rotateVRM0(vrm);
+            }
+
+            VRMUtils.removeUnnecessaryJoints(vrm.scene);
+            VRMUtils.removeUnnecessaryVertices(vrm.scene);
+
+            this.vrm = vrm;
+            this.scene.add(vrm.scene);
+
+            this.centerModel(vrm.scene);
+
+            const box = new THREE.Box3().setFromObject(vrm.scene, true);
+            const modelCenter = box.getCenter(new THREE.Vector3());
+            const modelSize = box.getSize(new THREE.Vector3());
+            const headHeight = modelCenter.y + modelSize.y / 4;
+
+            this.controls.target.set(0, headHeight, 0);
+            this.camera.position.set(0, headHeight, modelSize.z * 1.5 + 1.0);
+            this.controls.minDistance = modelSize.z * 0.3;
+            this.controls.maxDistance = modelSize.z * 4;
+            this.controls.update();
+
+            this.setNeutralPose();
+
+            if (vrm.lookAt) {
+                if (vrm.lookAt.applier) {
+                    vrm.lookAt.applier.lookAtType = VRMLookAt.BONE;
+                }
+                vrm.lookAt.target = this.lookTarget;
+            }
+
+            if (vrm.expressionManager) {
+                vrm.expressionManager.setValue('happy', 0.3);
+            }
+
+            if (gltf.animations && gltf.animations.length) {
+                this.mixer = new THREE.AnimationMixer(vrm.scene);
+                gltf.animations.forEach(clip => {
+                    const action = this.mixer.clipAction(clip);
+                    action.play();
+                });
+            }
+
+            this.triggerHaptic('success');
+        }
+
+        setNeutralPose() {
+            if (!this.vrm) return;
+
+            const leftUpperArm = this.vrm.humanoid.getNormalizedBoneNode(VRMHumanBoneName.LeftUpperArm);
+            if (leftUpperArm) {
+                leftUpperArm.rotation.set(-Math.PI / 2, 0, 0);
+            }
+
+            const rightUpperArm = this.vrm.humanoid.getNormalizedBoneNode(VRMHumanBoneName.RightUpperArm);
+            if (rightUpperArm) {
+                rightUpperArm.rotation.set(-Math.PI / 2, 0, 0);
+            }
+        }
+
+        setEmotion(expression, value = 1.0) {
+            if (this.vrm?.expressionManager) {
+                this.vrm.expressionManager.setValue(expression, value);
+            }
+        }
+
+        centerModel(object) {
+            const box = new THREE.Box3().setFromObject(object, true);
+            const center = box.getCenter(new THREE.Vector3());
+            object.position.sub(center);
+            object.position.y -= box.min.y;
+        }
+
+        setupEventListeners() {
+            const resizeObserver = new ResizeObserver(entries => {
+                if (this.isDestroyed) return;
+                for (const entry of entries) {
+                    this.camera.aspect = entry.contentRect.width / entry.contentRect.height;
+                    this.camera.updateProjectionMatrix();
+                    this.renderer.setSize(entry.contentRect.width, entry.contentRect.height);
+                }
+            });
+            resizeObserver.observe(document.body);
+
+            if (window.visualViewport) {
+                window.visualViewport.addEventListener('resize', () => {
+                    const viewportHeight = window.visualViewport.height;
+                    const diff = this.defaultViewportHeight - viewportHeight;
+                    const chatInterface = document.getElementById('chat-interface');
+                    if (diff > 100) {
+                        this.keyboardHeight = diff;
+                        chatInterface.style.bottom = '0';
+                        chatInterface.style.maxHeight = `${viewportHeight - 100}px`;
+                    } else {
+                        this.keyboardHeight = 0;
+                        chatInterface.style.bottom = '0';
+                        chatInterface.style.maxHeight = '50vh';
+                    }
+                });
+            }
+
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) {
+                    if (this.animationId) {
+                        cancelAnimationFrame(this.animationId);
+                        this.animationId = null;
+                    }
+                } else if (!this.animationId) {
+                    this.startRenderLoop();
+                }
+            });
+
+            const updatePointer = (x, y) => {
+                this.pointerPosition.x = (x / window.innerWidth) * 2 - 1;
+                this.pointerPosition.y = - (y / window.innerHeight) * 2 + 1;
+                this.lastInteractionTime = performance.now();
+                this.updateLookTarget();
+            };
+
+            this.renderer.domElement.addEventListener('pointermove', (event) => updatePointer(event.clientX, event.clientY), { passive: true });
+
+            this.renderer.domElement.addEventListener('touchmove', (event) => {
+                if (event.touches.length > 0) {
+                    updatePointer(event.touches[0].clientX, event.touches[0].clientY);
+                }
+            }, { passive: true });
+        }
+
+        setupChatInterface() {
+            const input = document.getElementById('chat-input');
+            const voiceButton = document.getElementById('voice-button');
+            const sendButton = document.getElementById('send-button');
+
+            input.addEventListener('input', () => {
+                const text = input.value.trim();
+                if (text.length > 0) {
+                    voiceButton.style.display = 'none';
+                    sendButton.style.display = 'flex';
+                    sendButton.classList.toggle('disabled', !text);
+                } else {
+                    voiceButton.style.display = 'flex';
+                    sendButton.style.display = 'none';
+                }
+            });
+
+            input.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    const message = input.value.trim();
+                    if (message) {
+                        this.processUserMessage(message);
+                        input.value = '';
+                        input.blur();
+                        voiceButton.style.display = 'flex';
+                        sendButton.style.display = 'none';
+                    }
+                }
+            });
+
+            sendButton.addEventListener('click', () => {
+                const message = input.value.trim();
+                if (message) {
+                    this.processUserMessage(message);
+                    input.value = '';
+                    input.blur();
+                    voiceButton.style.display = 'flex';
+                    sendButton.style.display = 'none';
+                }
+            });
+
+            voiceButton.addEventListener('click', async () => {
+                if (!this.hasMicAccess || !this.recognition) {
+                    try {
+                        await this.initAudioDevices();
+                    } catch (err) {
+                        return;
+                    }
+                }
+                if (this.isListening) {
+                    this.recognition.stop();
+                } else {
+                    try {
+                        this.recognition.start();
+                        await this.startVolumeAnalysis();
+                        input.disabled = true;
+                        voiceButton.classList.add('listening');
+                        sendButton.style.display = 'none';
+                        this.speechTimeout = setTimeout(() => this.recognition.stop(), 10000); // 10 sec timeout
+                    } catch (err) {
+                        console.warn('Speech recognition start failed:', err);
+                    }
+                }
+            });
+        }
+
+        async startVolumeAnalysis() {
+            if (this.audioContext) return;
+
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const constraints = { 
+                audio: { 
+                    deviceId: this.preferredMicDeviceId ? { exact: this.preferredMicDeviceId } : undefined,
+                    echoCancellation: true,
+                    noiseSuppression: true
+                } 
+            };
+            this.micStream = await navigator.mediaDevices.getUserMedia(constraints);
+            const source = this.audioContext.createMediaStreamSource(this.micStream);
+            this.analyser = this.audioContext.createAnalyser();
             this.analyser.fftSize = 256;
             source.connect(this.analyser);
-            this.visualizeMic();
 
-            this.recognition?.start();
-
-            // Авто-стоп через 6 сек тишины
-            this.speechTimeout = setTimeout(() => this.stopListening(), 6000);
-        } catch (e) {
-            this.stopListening();
-        }
-    }
-
-    }
-
-    stopListening() {
-        this.isListening = false;
-        document.getElementById('voice-btn').classList.remove('listening');
-        document.getElementById('chat-input').disabled = false;
-        if (this.recognition) this.recognition.stop();
-        if (this.micStream) this.micStream.getTracks().forEach(t=>t.stop());
-        if (this.audioCtx) this.audioCtx.close();
-        if (this.speechTimeout) clearTimeout(this.speechTimeout);
-        this.analyser = null;
-    }
-
-    visualizeMic() {
-        if (!this.isListening) return;
-        const data = new Uint8Array(this.analyser.frequencyBinCount);
-        this.analyser.getByteFrequencyData(data);
-        const vol = data.reduce((a,b)=>a+b)/data.length/255;
-        const btn = document.getElementById('voice-btn');
-        btn.style.transform = `scale(${1 + vol*0.4})`;
-        requestAnimationFrame(()=>this.visualizeMic());
-    }
-
-    onSpeechResult(e) {
-        const text = Array.from(e.results)[0][0].transcript.trim();
-        if (text) this.sendMessage(text);
-    }
-
-    sendMessage(text) {
-        this.addMessage(text, 'user');
-        input.value = '';
-        toggleSend();
-
-        this.showTyping();
-        setTimeout(() => {
-            const reply = this.getAIResponse(text);
-            this.hideTyping();
-            this.addMessage(reply, 'ai');
-            this.speak(reply);
-        }, 1200);
-    }
-
-    getAIResponse(msg) {
-        const answers = [
-            "Очень интересно!",
-            "Расскажи подробнее",
-            "Поняла",
-            "Класс!",
-            "Хихи, забавно",
-            "Согласна!",
-            "Ого, правда?"
-        ];
-        return answers[Math.floor(Math.random()*answers.length)];
-    }
-
-    addMessage(text, sender) {
-        const list = document.getElementById('messages-list');
-        const div = document.createElement('div');
-        div.className = `message ${sender}`;
-        div.textContent = text;
-        const time = document.createElement('div');
-        time.className = 'message-time';
-        time.textContent = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-        div.appendChild(time);
-        list.appendChild(div);
-        setTimeout(() => div.classList.add('animate-in'), 50);
-        list.scrollTop = list.scrollHeight;
-    }
-
-    showTyping() {
-        const list = document.getElementById('messages-list');
-        const div = document.createElement('div');
-        div.className = 'typing';
-        div.innerHTML = '<span></span><span></span><span></span>';
-        div.id = 'typing';
-        list.appendChild(div);
-        list.scrollTop = list.scrollHeight;
-    }
-
-    hideTyping() {
-        const el = document.getElementById('typing');
-        if (el) el.remove();
-    }
-
-    speak(text) {
-        if (!this.speech) return;
-        this.speech.cancel();
-        const utter = new SpeechSynthesisUtterance(text);
-        utter.lang = 'ru-RU';
-        utter.rate = 0.9;
-        utter.pitch = 1.1;
-        this.speech.speak(utter);
-
-        // lip sync
-        if (this.vrm?.expressionManager) {
-            const iv = setInterval(() => {
-                const v = Math.abs(Math.sin(Date.now()/80))*0.6 + 0.3;
-                this.vrm.expressionManager.setValue('aa', v);
-                this.vrm.expressionManager.setValue('oh', v*0.6);
-            }, 60);
-            utter.onend = () => {
-                clearInterval(iv);
-                this.vrm.expressionManager.setValue('aa', 0);
-                this.vrm.expressionManager.setValue('oh', 0);
-            };
-        }
-    }
-
-    startLoop() {
-        const animate = () => {
-            requestAnimationFrame(animate);
-            const delta = this.clock.getDelta();
-            this.controls?.update();
-
-            if (this.vrm) {
-                this.vrm.update(delta);
-                // blink
-                this.blinkTimer += delta;
-                if (this.blinkTimer > 4 + Math.random()*3) {
-                    this.vrm.expressionManager?.setValue('blink', 1);
-                    setTimeout(() => this.vrm.expressionManager?.setValue('blink', 0), 150);
-                    this.blinkTimer = 0;
+            const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+            const updateVolume = () => {
+                if (!this.isListening || this.isDestroyed) return;
+                this.analyser.getByteFrequencyData(dataArray);
+                this.micVolume = dataArray.reduce((a, b) => a + b, 0) / dataArray.length / 255;
+                const micButton = document.getElementById('voice-button');
+                if (micButton) {
+                    micButton.style.transform = `scale(${1 + this.micVolume * 0.3})`;
                 }
-            }
-            if (this.mixer) this.mixer.update(delta);
-            this.renderer.render(this.scene, this.camera);
-        };
-        animate();
-    }
-}
+                requestAnimationFrame(updateVolume);
+            };
+            updateVolume();
+        }
 
-new AiriCompanion();
+        stopVolumeAnalysis() {
+            if (this.micStream) {
+                this.micStream.getTracks().forEach(track => track.stop());
+                this.micStream = null;
+            }
+            if (this.audioContext && this.audioContext.state !== 'closed') {
+                this.audioContext.close();
+                this.audioContext = null;
+            }
+            this.analyser = null;
+            this.micVolume = 0;
+        }
+
+        updateMicButtonState() {
+            const voiceButton = document.getElementById('voice-button');
+            if (voiceButton && (!this.hasMicAccess || !this.recognition)) {
+                voiceButton.classList.add('disabled');
+            } else if (voiceButton) {
+                voiceButton.classList.remove('disabled');
+            }
+        }
+
+        handleSpeechResult(event) {
+            const transcript = Array.from(event.results).map(result => result[0].transcript).join('').trim();
+            if (transcript) {
+                this.processUserMessage(transcript);
+            }
+            this.recognition.stop();
+        }
+
+        handleSpeechError(event) {
+            console.warn('Speech recognition error:', event.error);
+            if (event.error === 'not-allowed') {
+                this.hasMicAccess = false;
+                this.updateMicButtonState();
+            }
+            this.handleSpeechEnd();
+        }
+
+        handleSpeechEnd() {
+            this.isListening = false;
+            const voiceButton = document.getElementById('voice-button');
+            if (voiceButton) {
+                voiceButton.classList.remove('listening');
+            }
+            this.stopVolumeAnalysis();
+            const input = document.getElementById('chat-input');
+            if (input) {
+                input.disabled = false;
+            }
+            if (this.speechTimeout) {
+                clearTimeout(this.speechTimeout);
+                this.speechTimeout = null;
+            }
+        }
+
+        processUserMessage(message) {
+            this.addMessage(message, 'user');
+            this.showLoadingIndicator();
+            setTimeout(() => {
+                const response = this.generateAIResponse(message);
+                this.hideLoadingIndicator();
+                this.addMessage(response, 'ai');
+                this.speak(response);
+                this.setEmotionBasedOnText(response);
+            }, 1000);
+        }
+
+        generateAIResponse(userMessage) {
+            return `Вы сказали: "${userMessage}". Чем еще могу помочь?`;
+        }
+
+        setEmotionBasedOnText(text) {
+            if (text.includes('?')) {
+                this.setEmotion('surprised', 0.6);
+            } else if (text.includes('!')) {
+                this.setEmotion('happy', 0.8);
+            } else {
+                this.setEmotion('neutral', 1.0);
+            }
+            setTimeout(() => this.setEmotion('happy', 0.3), 2000);
+        }
+
+        addMessage(text, sender) {
+            const messagesList = document.getElementById('messages-list');
+            const bubble = document.createElement('div');
+            bubble.classList.add('message-bubble', sender);
+            bubble.textContent = text;
+            const time = document.createElement('div');
+            time.classList.add('message-time');
+            time.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            bubble.appendChild(time);
+            messagesList.appendChild(bubble);
+            setTimeout(() => bubble.classList.add('animate-in'), 10);
+            messagesList.scrollTop = messagesList.scrollHeight;
+            this.messages.push({ text, sender });
+            if (this.messages.length > 5) {
+                const firstChild = messagesList.firstChild;
+                if (firstChild) firstChild.remove();
+                this.messages.shift();
+            }
+        }
+
+        showLoadingIndicator() {
+            const messagesList = document.getElementById('messages-list');
+            const loading = document.createElement('div');
+            loading.id = 'loading-indicator';
+            loading.classList.add('loading-dots');
+            for (let i = 0; i < 3; i++) {
+                const dot = document.createElement('div');
+                dot.classList.add('dot');
+                loading.appendChild(dot);
+            }
+            messagesList.appendChild(loading);
+            messagesList.scrollTop = messagesList.scrollHeight;
+        }
+
+        hideLoadingIndicator() {
+            const loading = document.getElementById('loading-indicator');
+            if (loading) loading.remove();
+        }
+
+        speak(text) {
+            if (!this.speechSynth || !this.vrm?.expressionManager) return;
+
+            if (this.currentUtterance) {
+                this.speechSynth.cancel();
+            }
+
+            this.currentUtterance = new SpeechSynthesisUtterance(text);
+            this.currentUtterance.volume = 1.0;
+            this.currentUtterance.rate = 1.0;
+            this.currentUtterance.pitch = 1.2;
+            this.currentUtterance.lang = 'ru-RU';
+            this.currentUtterance.onstart = () => this.startLipSync();
+            this.currentUtterance.onend = () => {
+                this.stopLipSync();
+                this.currentUtterance = null;
+            };
+            this.currentUtterance.onboundary = (event) => {
+                if (event.name === 'word') {
+                    this.vrm.expressionManager.setValue('happy', Math.random() * 0.3 + 0.5);
+                }
+            };
+            this.currentUtterance.onerror = (err) => console.error('Speech error', err);
+
+            this.speechSynth.speak(this.currentUtterance);
+        }
+
+        startLipSync() {
+            if (this.lipSyncInterval) return;
+            this.lipSyncInterval = setInterval(() => {
+                const value = Math.sin(Date.now() / 100) * 0.4 + 0.5;
+                this.vrm.expressionManager.setValue('aa', value);
+                this.vrm.expressionManager.setValue('ih', value * 0.7);
+                this.vrm.expressionManager.setValue('oh', value * 0.5);
+            }, 50);
+        }
+
+        stopLipSync() {
+            if (this.lipSyncInterval) {
+                clearInterval(this.lipSyncInterval);
+                this.lipSyncInterval = null;
+            }
+            this.vrm.expressionManager.setValue('aa', 0);
+            this.vrm.expressionManager.setValue('ih', 0);
+            this.vrm.expressionManager.setValue('oh', 0);
+        }
+
+        updateLookTarget() {
+            this.raycaster.setFromCamera(this.pointerPosition, this.camera);
+            this.raycaster.ray.intersectPlane(this.plane, this.intersectPoint);
+            this.lookTarget.position.copy(this.intersectPoint);
+        }
+
+        startRenderLoop() {
+            if (this.animationId || this.isDestroyed) return;
+
+            const animate = (time) => {
+                this.animationId = requestAnimationFrame(animate);
+                const delta = this.clock.getDelta();
+
+                if (this.controls) this.controls.update();
+
+                if (this.vrm) {
+                    if (Date.now() - this.lastInteractionTime > 500) {
+                        this.lookTarget.position.lerp(this.camera.position, 0.02);
+                    }
+                    if (this.vrm.lookAt) {
+                        this.vrm.lookAt.target = this.lookTarget;
+                    }
+
+                    this.blinkTimer += delta;
+                    if (this.blinkTimer > 3 + Math.random() * 2) {
+                        this.vrm.expressionManager.setValue('blink', 1);
+                        setTimeout(() => this.vrm.expressionManager.setValue('blink', 0), 200 + Math.random() * 100);
+                        this.blinkTimer = 0;
+                    }
+
+                    this.vrm.update(delta);
+                }
+
+                if (this.mixer) this.mixer.update(delta);
+
+                this.renderer.render(this.scene, this.camera);
+            };
+
+            animate();
+        }
+
+        triggerHaptic(type = 'success') {
+            const wa = window.Telegram?.WebApp;
+            if (wa?.HapticFeedback) wa.HapticFeedback.notificationOccurred(type);
+        }
+
+        handleFatalError(error) {
+            console.error('Fatal error:', error);
+            this.triggerHaptic('error');
+            const wa = window.Telegram?.WebApp;
+            const msg = `Ошибка: ${error.message || error}`;
+            if (wa) {
+                wa.showAlert(msg, () => wa.close());
+            } else {
+                alert(msg);
+            }
+            this.destroy();
+        }
+
+        destroy() {
+            this.isDestroyed = true;
+            if (this.animationId) cancelAnimationFrame(this.animationId);
+            if (this.mixer) {
+                this.mixer.stopAllAction();
+                this.mixer = null;
+            }
+            if (this.controls) this.controls.dispose();
+            if (this.vrm) {
+                this.scene.remove(this.vrm.scene);
+                this.vrm = null;
+            }
+            if (this.renderer) {
+                this.renderer.dispose();
+                if (this.renderer.forceContextLoss) this.renderer.forceContextLoss();
+                this.renderer.domElement.remove();
+                this.renderer = null;
+            }
+            if (this.speechSynth && this.currentUtterance) {
+                this.speechSynth.cancel();
+            }
+            this.scene = null;
+            this.camera = null;
+            this.clock = null;
+            if (this.lipSyncInterval) clearInterval(this.lipSyncInterval);
+            if (this.recognition) this.recognition.stop();
+            this.stopVolumeAnalysis();
+            if (this.lookTarget) this.scene.remove(this.lookTarget);
+            if (this.speechTimeout) clearTimeout(this.speechTimeout);
+        }
+    }
+
+    let viewerInstance = null;
+    const initialize = () => {
+        if (viewerInstance) return;
+        viewerInstance = new CompanionViewer();
+    };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initialize, { once: true });
+    } else {
+        initialize();
+    }
+
+    window.addEventListener('beforeunload', () => {
+        if (viewerInstance) viewerInstance.destroy();
+    }, { once: true });
 </script>
 </body>
 </html>
