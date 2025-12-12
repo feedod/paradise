@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <title>VRM Viewer</title>
     <style>
         * {
             -webkit-user-select: none;
@@ -22,9 +21,47 @@
             overflow: hidden;
             background: #000;
             touch-action: manipulation;
+            font-family: system-ui, -apple-system, sans-serif;
         }
         canvas {
             display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+        #chat-container {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            padding: 8px;
+            box-sizing: border-box;
+            background: rgba(0, 0, 0, 0.5);
+        }
+        #chat-input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid #333;
+            border-radius: 20px;
+            background: #222;
+            color: #fff;
+            font-size: 16px;
+        }
+        #voice-button {
+            margin-left: 8px;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 20px;
+            background: #007aff;
+            color: #fff;
+            cursor: pointer;
+        }
+        #voice-button.listening {
+            background: #ff3b30;
         }
     </style>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -32,19 +69,24 @@
         {
             "imports": {
                 "three": "https://cdn.jsdelivr.net/npm/three@0.181.2/build/three.module.js",
-                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.181.2/examples/jsm/"
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.181.2/examples/jsm/",
+                "three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.1.0/lib/three-vrm.module.js"
             }
         }
     </script>
 </head>
 <body>
+    <div id="chat-container">
+        <input type="text" id="chat-input" placeholder="Type a message...">
+        <button id="voice-button">🎙️</button>
+    </div>
 <script type="module">
     import * as THREE from 'three';
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-    import { VRMLoaderPlugin, VRMUtils, VRMHumanBoneName, VRMLookAt } from 'https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.1.0/lib/three-vrm.module.js';
+    import { VRMLoaderPlugin, VRMUtils, VRMHumanBoneName, VRMLookAt } from 'three-vrm';
 
-    class VRMViewer {
+    class CompanionViewer {
         constructor() {
             this.scene = new THREE.Scene();
             this.camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 100);
@@ -61,6 +103,19 @@
             this.lastInteractionTime = 0;
             this.pointerPosition = new THREE.Vector2();
             this.intersectPoint = new THREE.Vector3();
+            this.blinkTimer = 0;
+            this.speechSynth = window.speechSynthesis;
+            this.recognition = null;
+            this.isListening = false;
+            this.lipSyncInterval = null;
+
+            if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                this.recognition = new SpeechRecognition();
+                this.recognition.continuous = false;
+                this.recognition.interimResults = false;
+                this.recognition.lang = 'en-US';
+            }
 
             this.init().catch(err => this.handleFatalError(err));
         }
@@ -75,6 +130,7 @@
             this.setupLights();
             await this.loadModel();
             this.setupEventListeners();
+            this.setupChatInterface();
             this.startRenderLoop();
         }
 
@@ -82,7 +138,6 @@
             const wa = window.Telegram?.WebApp;
             if (!wa) return;
             wa.ready();
-            wa.expand();
             wa.enableClosingConfirmation();
             wa.setBackgroundColor('#000000');
             wa.setHeaderColor('#000000');
@@ -145,13 +200,7 @@
             loader.register(parser => new VRMLoaderPlugin(parser));
 
             const modelUrl = 'https://raw.githubusercontent.com/mrxz/vrm-sample-models/master/human_male/human_male.vrm';
-            let gltf;
-            try {
-                gltf = await loader.loadAsync(modelUrl);
-            } catch (e) {
-                const fallbackUrl = 'https://raw.githubusercontent.com/vrm-c/UniVRM/master/Tests/Models/Alicia_vrm-0.51/AliciaSolid_vrm-0.51.vrm';
-                gltf = await loader.loadAsync(fallbackUrl);
-            }
+            const gltf = await loader.loadAsync(modelUrl);
             const vrm = gltf.userData.vrm;
 
             if (!vrm) throw new Error('Failed to load VRM model');
@@ -170,7 +219,7 @@
             const box = new THREE.Box3().setFromObject(vrm.scene);
             const modelCenter = box.getCenter(new THREE.Vector3());
             const modelSize = box.getSize(new THREE.Vector3());
-            const headHeight = modelCenter.y + modelSize.y / 4; // Approximate head position
+            const headHeight = modelCenter.y + modelSize.y / 4;
 
             this.controls.target.set(0, headHeight, 0);
             this.camera.position.set(0, headHeight, modelSize.z * 1.2 + 0.5);
@@ -203,15 +252,14 @@
             }
 
             this.triggerHaptic('success');
+            this.speak('Hello! How can I assist you today?');
         }
 
         centerModel(object) {
             const box = new THREE.Box3().setFromObject(object, true);
             const center = box.getCenter(new THREE.Vector3());
-            const size = box.getSize(new THREE.Vector3());
-            object.position.x -= center.x;
-            object.position.z -= center.z;
-            object.position.y = -box.min.y;
+            object.position.sub(center);
+            object.position.y -= box.min.y;
         }
 
         setupEventListeners() {
@@ -241,15 +289,87 @@
                 this.updateLookTarget();
             };
 
-            this.renderer.domElement.addEventListener('pointermove', (event) => {
-                updatePointer(event.clientX, event.clientY);
-            });
+            this.renderer.domElement.addEventListener('pointermove', (event) => updatePointer(event.clientX, event.clientY));
 
             this.renderer.domElement.addEventListener('touchmove', (event) => {
                 if (event.touches.length > 0) {
                     updatePointer(event.touches[0].clientX, event.touches[0].clientY);
                 }
             }, { passive: true });
+        }
+
+        setupChatInterface() {
+            const input = document.getElementById('chat-input');
+            const voiceButton = document.getElementById('voice-button');
+
+            input.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    this.processMessage(input.value);
+                    input.value = '';
+                }
+            });
+
+            voiceButton.addEventListener('click', () => {
+                if (!this.recognition) return;
+                if (this.isListening) {
+                    this.recognition.stop();
+                } else {
+                    this.recognition.start();
+                }
+            });
+
+            if (this.recognition) {
+                this.recognition.onstart = () => {
+                    this.isListening = true;
+                    voiceButton.classList.add('listening');
+                    voiceButton.textContent = 'Stop';
+                };
+
+                this.recognition.onend = () => {
+                    this.isListening = false;
+                    voiceButton.classList.remove('listening');
+                    voiceButton.textContent = '🎙️';
+                };
+
+                this.recognition.onresult = (event) => {
+                    const transcript = event.results[0][0].transcript;
+                    this.processMessage(transcript);
+                };
+            }
+        }
+
+        processMessage(message) {
+            // Simple echo response for analog; in production, integrate LLM
+            const response = `You said: ${message}. How interesting!`;
+            this.speak(response);
+        }
+
+        speak(text) {
+            if (!this.speechSynth || !this.vrm?.expressionManager) return;
+
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.onstart = () => this.startLipSync();
+            utterance.onend = () => this.stopLipSync();
+
+            this.speechSynth.speak(utterance);
+        }
+
+        startLipSync() {
+            if (this.lipSyncInterval) return;
+            this.lipSyncInterval = setInterval(() => {
+                const value = Math.random() * 0.5 + 0.3;
+                this.vrm.expressionManager.setValue('aa', value);
+                this.vrm.expressionManager.setValue('ih', value * 0.8);
+            }, 50);
+        }
+
+        stopLipSync() {
+            if (this.lipSyncInterval) {
+                clearInterval(this.lipSyncInterval);
+                this.lipSyncInterval = null;
+            }
+            this.vrm.expressionManager.setValue('aa', 0);
+            this.vrm.expressionManager.setValue('ih', 0);
         }
 
         updateLookTarget() {
@@ -273,6 +393,15 @@
                         this.lookTarget.lerp(this.camera.position, 0.02);
                     }
                     this.vrm.lookAt.target = this.lookTarget;
+
+                    // Random blink
+                    this.blinkTimer += delta;
+                    if (this.blinkTimer > 3 + Math.random() * 2) {
+                        this.vrm.expressionManager.setValue('blink', 1);
+                        setTimeout(() => this.vrm.expressionManager.setValue('blink', 0), 200);
+                        this.blinkTimer = 0;
+                    }
+
                     this.vrm.update(delta);
                 }
 
@@ -294,7 +423,11 @@
             this.triggerHaptic('error');
             const wa = window.Telegram?.WebApp;
             const msg = `Ошибка: ${error.message || error}`;
-            wa ? wa.showAlert(msg) : alert(msg);
+            if (wa) {
+                wa.showAlert(msg, () => wa.close());
+            } else {
+                alert(msg);
+            }
             this.destroy();
         }
 
@@ -319,23 +452,24 @@
             this.scene = null;
             this.camera = null;
             this.clock = null;
+            if (this.lipSyncInterval) clearInterval(this.lipSyncInterval);
         }
     }
 
-    let viewer = null;
-    const start = () => {
-        if (viewer) return;
-        viewer = new VRMViewer();
+    let viewerInstance = null;
+    const initialize = () => {
+        if (viewerInstance) return;
+        viewerInstance = new CompanionViewer();
     };
 
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', start, { once: true });
+        document.addEventListener('DOMContentLoaded', initialize, { once: true });
     } else {
-        start();
+        initialize();
     }
 
     window.addEventListener('beforeunload', () => {
-        if (viewer) viewer.destroy();
+        if (viewerInstance) viewerInstance.destroy();
     }, { once: true });
 </script>
 </body>
