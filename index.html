@@ -27,7 +27,7 @@
             display: block;
         }
     </style>
-    <script src="https://telegram.org/js/telegram-web-app.js?64"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
 <script type="module">
@@ -36,7 +36,7 @@
     import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.181.2/examples/jsm/loaders/GLTFLoader.js';
     import { VRMLoaderPlugin, VRMUtils } from 'https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.1.0/lib/three-vrm.module.js';
     
-class VRMViewer {
+    class VRMViewer {
     constructor() {
         this.scene = new THREE.Scene();
         this.camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 100);
@@ -130,13 +130,17 @@ class VRMViewer {
         const loader = new GLTFLoader();
         loader.register(parser => new VRMLoaderPlugin(parser));
 
-        const modelUrl = 'https://raw.githubusercontent.com/mrxz/vrm-sample-models/master/human_male/human_male.vrm';
+        const modelUrl = 'https://raw.githubusercontent.com/vrm-c/UniVRM/master/Tests/Models/Alicia_vrm-0.51/AliciaSolid_vrm-0.51.vrm';
         const gltf = await loader.loadAsync(modelUrl);
         const vrm = gltf.userData.vrm;
 
         if (!vrm) throw new Error('Failed to load VRM model');
 
-        await VRMUtils.rotateVRM0(vrm);
+        // Conditional rotation for old VRM versions
+        if (parseFloat(vrm.meta.vrmVersion) < 1) {
+            await VRMUtils.rotateVRM0(vrm);
+        }
+
         VRMUtils.removeUnnecessaryJoints(vrm.scene);
 
         this.vrm = vrm;
@@ -251,3 +255,6 @@ if (document.readyState === 'loading') {
 window.addEventListener('beforeunload', () => {
     if (viewer) viewer.destroy();
 }, { once: true });
+</script>
+</body>
+</html>
