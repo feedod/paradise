@@ -42,7 +42,7 @@
     import * as THREE from 'three';
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-    import { VRMLoaderPlugin, VRMUtils } from 'https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.1.0/lib/three-vrm.module.js';
+    import { VRMLoaderPlugin, VRMUtils, VRMHumanBoneName } from 'https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.1.0/lib/three-vrm.module.js';
 
     class VRMViewer {
         constructor() {
@@ -154,6 +154,27 @@
             this.scene.add(vrm.scene);
 
             this.centerModel(vrm.scene);
+
+            // Center on model
+            const box = new THREE.Box3().setFromObject(vrm.scene);
+            const modelCenter = box.getCenter(new THREE.Vector3());
+            const modelSize = box.getSize(new THREE.Vector3());
+            this.controls.target.set(0, modelCenter.y, 0);
+            this.camera.position.set(0, modelCenter.y, modelSize.z * 1.5 + 1);
+            this.controls.minDistance = modelSize.z * 0.5;
+            this.controls.maxDistance = modelSize.z * 5;
+            this.controls.update();
+
+            // Lower arms
+            const leftUpperArm = vrm.humanoid.getNormalizedBoneNode(VRMHumanBoneName.LeftUpperArm);
+            if (leftUpperArm) {
+                leftUpperArm.rotation.z = Math.PI / 2.5; // Adjust angle for natural down position
+            }
+
+            const rightUpperArm = vrm.humanoid.getNormalizedBoneNode(VRMHumanBoneName.RightUpperArm);
+            if (rightUpperArm) {
+                rightUpperArm.rotation.z = -Math.PI / 2.5; // Adjust angle for natural down position
+            }
 
             if (vrm.lookAt) vrm.lookAt.target = this.camera;
 
