@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>VRM Viewer</title>
     <style>
         * {
-            box-sizing: border-box;
             -webkit-user-select: none;
             -moz-user-select: none;
             user-select: none;
@@ -22,75 +22,9 @@
             overflow: hidden;
             background: #000;
             touch-action: manipulation;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
         }
         canvas {
             display: block;
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 1;
-        }
-        #chat-container {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            z-index: 2;
-            display: flex;
-            align-items: center;
-            padding: 12px 16px;
-            background: linear-gradient(to top, rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0));
-            transition: background 0.3s ease;
-        }
-        #chat-input {
-            flex: 1;
-            padding: 12px 16px;
-            border: none;
-            border-radius: 24px;
-            background: rgba(255, 255, 255, 0.1);
-            color: #fff;
-            font-size: 16px;
-            backdrop-filter: blur(10px);
-            transition: background 0.3s ease;
-        }
-        #chat-input:focus {
-            background: rgba(255, 255, 255, 0.15);
-            outline: none;
-        }
-        #voice-button {
-            margin-left: 12px;
-            padding: 12px;
-            border: none;
-            border-radius: 50%;
-            background: #007aff;
-            color: #fff;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 48px;
-            height: 48px;
-            transition: background 0.3s ease, transform 0.2s ease;
-        }
-        #voice-button:hover {
-            transform: scale(1.05);
-        }
-        #voice-button.listening {
-            background: #ff3b30;
-            animation: pulse 1.5s infinite;
-        }
-        @keyframes pulse {
-            0% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.7); }
-            70% { box-shadow: 0 0 0 10px rgba(255, 59, 48, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0); }
-        }
-        .mic-icon {
-            width: 24px;
-            height: 24px;
-            fill: #fff;
         }
     </style>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -98,32 +32,23 @@
         {
             "imports": {
                 "three": "https://cdn.jsdelivr.net/npm/three@0.181.2/build/three.module.js",
-                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.181.2/examples/jsm/",
-                "three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.1.0/lib/three-vrm.module.js"
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.181.2/examples/jsm/"
             }
         }
     </script>
 </head>
 <body>
-    <div id="chat-container">
-        <input type="text" id="chat-input" placeholder="Type a message...">
-        <button id="voice-button">
-            <svg class="mic-icon" viewBox="0 0 24 24">
-                <path d="M12 2C10.3431 2 9 3.34315 9 5V11C9 12.6569 10.3431 14 12 14C13.6569 14 15 12.6569 15 11V5C15 3.34315 13.6569 2 12 2ZM7 5C7 2.23858 9.23858 0 12 0C14.7614 0 17 2.23858 17 5V11C17 13.7614 14.7614 16 12 16C9.23858 16 7 13.7614 7 11V5ZM5 10C5.55228 10 6 10.4477 6 11C6 14.3094 8.05719 17.1659 11 17.8435V20H10C9.44772 20 9 20.4477 9 21C9 21.5523 9.44772 22 10 22H14C14.5523 22 15 21.5523 15 21C15 20.4477 14.5523 20 14 20H13V17.8435C15.9428 17.1659 18 14.3094 18 11C18 10.4477 18.4477 10 19 10C19.5523 10 20 10.4477 20 11C20 15.4183 16.4183 19 12 19C7.58172 19 4 15.4183 4 11C4 10.4477 4.44772 10 5 10Z"/>
-            </svg>
-        </button>
-    </div>
 <script type="module">
     import * as THREE from 'three';
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-    import { VRMLoaderPlugin, VRMUtils, VRMHumanBoneName, VRMLookAt } from 'three-vrm';
+    import { VRMLoaderPlugin, VRMUtils, VRMHumanBoneName, VRMLookAt } from 'https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.1.0/lib/three-vrm.module.js';
 
-    class CompanionViewer {
+    class VRMViewer {
         constructor() {
             this.scene = new THREE.Scene();
-            this.camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 1000);
-            this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance', logarithmicDepthBuffer: true });
+            this.camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 100);
+            this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
             this.clock = new THREE.Clock();
             this.vrm = null;
             this.mixer = null;
@@ -136,23 +61,6 @@
             this.lastInteractionTime = 0;
             this.pointerPosition = new THREE.Vector2();
             this.intersectPoint = new THREE.Vector3();
-            this.blinkTimer = 0;
-            this.speechSynth = window.speechSynthesis;
-            this.recognition = null;
-            this.isListening = false;
-            this.lipSyncInterval = null;
-            this.currentUtterance = null;
-
-            if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
-                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-                this.recognition = new SpeechRecognition();
-                this.recognition.continuous = false;
-                this.recognition.interimResults = false;
-                this.recognition.lang = navigator.language || 'en-US';
-                this.recognition.onresult = (event) => this.handleSpeechResult(event);
-                this.recognition.onerror = (event) => this.handleSpeechError(event);
-                this.recognition.onend = () => this.handleSpeechEnd();
-            }
 
             this.init().catch(err => this.handleFatalError(err));
         }
@@ -167,7 +75,6 @@
             this.setupLights();
             await this.loadModel();
             this.setupEventListeners();
-            this.setupChatInterface();
             this.startRenderLoop();
         }
 
@@ -175,6 +82,7 @@
             const wa = window.Telegram?.WebApp;
             if (!wa) return;
             wa.ready();
+            wa.expand();
             wa.enableClosingConfirmation();
             wa.setBackgroundColor('#000000');
             wa.setHeaderColor('#000000');
@@ -237,28 +145,32 @@
             loader.register(parser => new VRMLoaderPlugin(parser));
 
             const modelUrl = 'https://raw.githubusercontent.com/mrxz/vrm-sample-models/master/human_male/human_male.vrm';
-            const gltf = await loader.loadAsync(modelUrl);
+            let gltf;
+            try {
+                gltf = await loader.loadAsync(modelUrl);
+            } catch (e) {
+                const fallbackUrl = 'https://raw.githubusercontent.com/vrm-c/UniVRM/master/Tests/Models/Alicia_vrm-0.51/AliciaSolid_vrm-0.51.vrm';
+                gltf = await loader.loadAsync(fallbackUrl);
+            }
             const vrm = gltf.userData.vrm;
 
             if (!vrm) throw new Error('Failed to load VRM model');
 
-            const version = parseFloat(vrm.meta.vrmVersion || '0');
-            if (version < 1) {
+            if (parseFloat(vrm.meta.vrmVersion) < 1) {
                 await VRMUtils.rotateVRM0(vrm);
             }
 
             VRMUtils.removeUnnecessaryJoints(vrm.scene);
-            VRMUtils.removeUnnecessaryVertices(vrm.scene);
 
             this.vrm = vrm;
             this.scene.add(vrm.scene);
 
             this.centerModel(vrm.scene);
 
-            const box = new THREE.Box3().setFromObject(vrm.scene, true);
+            const box = new THREE.Box3().setFromObject(vrm.scene);
             const modelCenter = box.getCenter(new THREE.Vector3());
             const modelSize = box.getSize(new THREE.Vector3());
-            const headHeight = modelCenter.y + modelSize.y / 4;
+            const headHeight = modelCenter.y + modelSize.y / 4; // Approximate head position
 
             this.controls.target.set(0, headHeight, 0);
             this.camera.position.set(0, headHeight, modelSize.z * 1.2 + 0.5);
@@ -268,51 +180,46 @@
 
             const leftUpperArm = vrm.humanoid.getNormalizedBoneNode(VRMHumanBoneName.LeftUpperArm);
             if (leftUpperArm) {
-                leftUpperArm.rotation.set(-Math.PI / 6, 0, Math.PI / 12);
+                leftUpperArm.rotation.x = -Math.PI / 6;
+                leftUpperArm.rotation.z = Math.PI / 12;
             }
 
             const rightUpperArm = vrm.humanoid.getNormalizedBoneNode(VRMHumanBoneName.RightUpperArm);
             if (rightUpperArm) {
-                rightUpperArm.rotation.set(-Math.PI / 6, 0, -Math.PI / 12);
+                rightUpperArm.rotation.x = -Math.PI / 6;
+                rightUpperArm.rotation.z = -Math.PI / 12;
             }
 
-            if (vrm.lookAt) {
-                vrm.lookAt.applier.lookAtType = VRMLookAt.BONE;
-                this.lookTarget.copy(this.camera.position);
-                vrm.lookAt.target = this.lookTarget;
-            }
+            vrm.lookAt.applier.lookAtType = VRMLookAt.BONE;
 
-            if (vrm.expressionManager) {
-                vrm.expressionManager.setValue('happy', 0.5);
-            }
+            this.lookTarget.copy(this.camera.position);
+            vrm.lookAt.target = this.lookTarget;
+
+            if (vrm.expressionManager) vrm.expressionManager.setValue('happy', 0.5);
 
             if (gltf.animations && gltf.animations.length) {
                 this.mixer = new THREE.AnimationMixer(vrm.scene);
-                gltf.animations.forEach(clip => {
-                    const action = this.mixer.clipAction(clip);
-                    action.play();
-                });
+                gltf.animations.forEach(clip => this.mixer.clipAction(clip).play());
             }
 
             this.triggerHaptic('success');
-            this.speak('Hello! How can I assist you today?');
         }
 
         centerModel(object) {
             const box = new THREE.Box3().setFromObject(object, true);
             const center = box.getCenter(new THREE.Vector3());
-            object.position.sub(center);
-            object.position.y -= box.min.y;
+            const size = box.getSize(new THREE.Vector3());
+            object.position.x -= center.x;
+            object.position.z -= center.z;
+            object.position.y = -box.min.y;
         }
 
         setupEventListeners() {
-            const resizeObserver = new ResizeObserver(entries => {
+            const resizeObserver = new ResizeObserver(() => {
                 if (this.isDestroyed) return;
-                for (const entry of entries) {
-                    this.camera.aspect = entry.contentRect.width / entry.contentRect.height;
-                    this.camera.updateProjectionMatrix();
-                    this.renderer.setSize(entry.contentRect.width, entry.contentRect.height);
-                }
+                this.camera.aspect = window.innerWidth / window.innerHeight;
+                this.camera.updateProjectionMatrix();
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
             });
             resizeObserver.observe(document.body);
 
@@ -334,107 +241,15 @@
                 this.updateLookTarget();
             };
 
-            this.renderer.domElement.addEventListener('pointermove', (event) => updatePointer(event.clientX, event.clientY), { passive: true });
+            this.renderer.domElement.addEventListener('pointermove', (event) => {
+                updatePointer(event.clientX, event.clientY);
+            });
 
             this.renderer.domElement.addEventListener('touchmove', (event) => {
                 if (event.touches.length > 0) {
                     updatePointer(event.touches[0].clientX, event.touches[0].clientY);
                 }
             }, { passive: true });
-        }
-
-        setupChatInterface() {
-            const input = document.getElementById('chat-input');
-            const voiceButton = document.getElementById('voice-button');
-
-            input.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    this.processMessage(input.value.trim());
-                    input.value = '';
-                }
-            });
-
-            voiceButton.addEventListener('click', () => {
-                if (!this.recognition) return;
-                if (this.isListening) {
-                    this.recognition.stop();
-                } else {
-                    try {
-                        this.recognition.start();
-                    } catch (err) {
-                        console.warn('Speech recognition start failed:', err);
-                    }
-                }
-            });
-        }
-
-        handleSpeechResult(event) {
-            const transcript = Array.from(event.results).map(result => result[0].transcript).join('');
-            this.processMessage(transcript.trim());
-        }
-
-        handleSpeechError(event) {
-            console.warn('Speech recognition error:', event.error);
-            this.handleSpeechEnd();
-        }
-
-        handleSpeechEnd() {
-            this.isListening = false;
-            const voiceButton = document.getElementById('voice-button');
-            voiceButton.classList.remove('listening');
-        }
-
-        processMessage(message) {
-            if (!message) return;
-            // In production, integrate with AI API; here, simple response
-            const response = `You said: "${message}". That's fascinating! Tell me more.`;
-            this.speak(response);
-        }
-
-        speak(text) {
-            if (!this.speechSynth || !this.vrm?.expressionManager) return;
-
-            if (this.currentUtterance) {
-                this.speechSynth.cancel();
-            }
-
-            this.currentUtterance = new SpeechSynthesisUtterance(text);
-            this.currentUtterance.volume = 1.0;
-            this.currentUtterance.rate = 1.0;
-            this.currentUtterance.pitch = 1.0;
-            this.currentUtterance.onstart = () => this.startLipSync();
-            this.currentUtterance.onend = () => {
-                this.stopLipSync();
-                this.currentUtterance = null;
-            };
-            this.currentUtterance.onboundary = (event) => {
-                if (event.name === 'word') {
-                    this.vrm.expressionManager.setValue('happy', Math.random() * 0.3 + 0.5);
-                }
-            };
-
-            this.speechSynth.speak(this.currentUtterance);
-        }
-
-        startLipSync() {
-            if (this.lipSyncInterval) return;
-            this.lipSyncInterval = setInterval(() => {
-                const value = Math.sin(Date.now() / 100) * 0.4 + 0.5;
-                this.vrm.expressionManager.setValue('aa', value);
-                this.vrm.expressionManager.setValue('ih', value * 0.7);
-                this.vrm.expressionManager.setValue('oh', value * 0.5);
-            }, 50);
-        }
-
-        stopLipSync() {
-            if (this.lipSyncInterval) {
-                clearInterval(this.lipSyncInterval);
-                this.lipSyncInterval = null;
-            }
-            this.vrm.expressionManager.setValue('aa', 0);
-            this.vrm.expressionManager.setValue('ih', 0);
-            this.vrm.expressionManager.setValue('oh', 0);
         }
 
         updateLookTarget() {
@@ -457,17 +272,7 @@
                     if (time - this.lastInteractionTime > 500) {
                         this.lookTarget.lerp(this.camera.position, 0.02);
                     }
-                    if (this.vrm.lookAt) {
-                        this.vrm.lookAt.target = this.lookTarget;
-                    }
-
-                    this.blinkTimer += delta;
-                    if (this.blinkTimer > 3 + Math.random() * 2) {
-                        this.vrm.expressionManager.setValue('blink', 1);
-                        setTimeout(() => this.vrm.expressionManager.setValue('blink', 0), 200 + Math.random() * 100);
-                        this.blinkTimer = 0;
-                    }
-
+                    this.vrm.lookAt.target = this.lookTarget;
                     this.vrm.update(delta);
                 }
 
@@ -488,12 +293,8 @@
             console.error('Fatal error:', error);
             this.triggerHaptic('error');
             const wa = window.Telegram?.WebApp;
-            const msg = `Error: ${error.message || error}`;
-            if (wa) {
-                wa.showAlert(msg, () => wa.close());
-            } else {
-                alert(msg);
-            }
+            const msg = `Ошибка: ${error.message || error}`;
+            wa ? wa.showAlert(msg) : alert(msg);
             this.destroy();
         }
 
@@ -515,31 +316,26 @@
                 this.renderer.domElement.remove();
                 this.renderer = null;
             }
-            if (this.speechSynth && this.currentUtterance) {
-                this.speechSynth.cancel();
-            }
             this.scene = null;
             this.camera = null;
             this.clock = null;
-            if (this.lipSyncInterval) clearInterval(this.lipSyncInterval);
-            if (this.recognition) this.recognition.stop();
         }
     }
 
-    let viewerInstance = null;
-    const initialize = () => {
-        if (viewerInstance) return;
-        viewerInstance = new CompanionViewer();
+    let viewer = null;
+    const start = () => {
+        if (viewer) return;
+        viewer = new VRMViewer();
     };
 
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initialize, { once: true });
+        document.addEventListener('DOMContentLoaded', start, { once: true });
     } else {
-        initialize();
+        start();
     }
 
     window.addEventListener('beforeunload', () => {
-        if (viewerInstance) viewerInstance.destroy();
+        if (viewer) viewer.destroy();
     }, { once: true });
 </script>
 </body>
