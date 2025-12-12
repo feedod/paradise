@@ -28,233 +28,240 @@
         }
     </style>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.181.2/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.181.2/examples/jsm/"
+            }
+        }
+    </script>
 </head>
 <body>
 <script type="module">
-    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.181.2/build/three.module.js';
-    import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.181.2/examples/jsm/controls/OrbitControls.js';
-    import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.181.2/examples/jsm/loaders/GLTFLoader.js';
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     import { VRMLoaderPlugin, VRMUtils } from 'https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.1.0/lib/three-vrm.module.js';
-    
+
     class VRMViewer {
-    constructor() {
-        this.scene = new THREE.Scene();
-        this.camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 100);
-        this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
-        this.clock = new THREE.Clock();
-        this.vrm = null;
-        this.mixer = null;
-        this.controls = null;
-        this.animationId = null;
-        this.isDestroyed = false;
-
-        this.init().catch(err => this.handleFatalError(err));
-    }
-
-    async init() {
-        if (this.isDestroyed) return;
-
-        this.setupTelegram();
-        this.setupRenderer();
-        this.setupCamera();
-        this.setupControls();
-        this.setupLights();
-        await this.loadModel();
-        this.setupEventListeners();
-        this.startRenderLoop();
-    }
-
-    setupTelegram() {
-        const wa = window.Telegram?.WebApp;
-        if (!wa) return;
-        wa.ready();
-        wa.expand();
-        wa.enableClosingConfirmation();
-        wa.setBackgroundColor('#000000');
-        wa.setHeaderColor('#000000');
-        wa.disableVerticalSwipes();
-    }
-
-    setupRenderer() {
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        this.renderer.toneMappingExposure = 1.0;
-        this.renderer.shadowMap.enabled = true;
-        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-        document.body.appendChild(this.renderer.domElement);
-    }
-
-    setupCamera() {
-        this.camera.position.set(0, 1.4, 2.2);
-    }
-
-    setupControls() {
-        this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-        this.controls.enableDamping = true;
-        this.controls.dampingFactor = 0.05;
-        this.controls.screenSpacePanning = false;
-        this.controls.minDistance = 1.2;
-        this.controls.maxDistance = 4.0;
-        this.controls.minPolarAngle = Math.PI * 0.35;
-        this.controls.maxPolarAngle = Math.PI * 0.65;
-        this.controls.target.set(0, 1.35, 0);
-        this.controls.update();
-    }
-
-    setupLights() {
-        const hemi = new THREE.HemisphereLight(0xffffff, 0x444488, 0.8);
-        hemi.position.set(0, 20, 0);
-        this.scene.add(hemi);
-
-        const main = new THREE.DirectionalLight(0xfff0ea, 1.4);
-        main.position.set(3, 5, 4);
-        main.castShadow = true;
-        main.shadow.mapSize.width = 2048;
-        main.shadow.mapSize.height = 2048;
-        main.shadow.camera.near = 0.5;
-        main.shadow.camera.far = 50;
-        main.shadow.camera.left = -10;
-        main.shadow.camera.right = 10;
-        main.shadow.camera.top = 10;
-        main.shadow.camera.bottom = -10;
-        this.scene.add(main);
-
-        const fill = new THREE.DirectionalLight(0xe0c3fc, 0.7);
-        fill.position.set(-4, 3, -3);
-        this.scene.add(fill);
-    }
-
-    async loadModel() {
-        const loader = new GLTFLoader();
-        loader.register(parser => new VRMLoaderPlugin(parser));
-
-        const modelUrl = 'https://raw.githubusercontent.com/vrm-c/UniVRM/master/Tests/Models/Alicia_vrm-0.51/AliciaSolid_vrm-0.51.vrm';
-        const gltf = await loader.loadAsync(modelUrl);
-        const vrm = gltf.userData.vrm;
-
-        if (!vrm) throw new Error('Failed to load VRM model');
-
-        // Conditional rotation for old VRM versions
-        if (parseFloat(vrm.meta.vrmVersion) < 1) {
-            await VRMUtils.rotateVRM0(vrm);
-        }
-
-        VRMUtils.removeUnnecessaryJoints(vrm.scene);
-
-        this.vrm = vrm;
-        this.scene.add(vrm.scene);
-
-        this.centerModel(vrm.scene);
-
-        if (vrm.lookAt) vrm.lookAt.target = this.camera;
-
-        if (vrm.expressionManager) vrm.expressionManager.setValue('happy', 0.5);
-
-        if (gltf.animations && gltf.animations.length) {
-            this.mixer = new THREE.AnimationMixer(vrm.scene);
-            gltf.animations.forEach(clip => this.mixer.clipAction(clip).play());
-        }
-
-        this.triggerHaptic('success');
-    }
-
-    centerModel(object) {
-        const box = new THREE.Box3().setFromObject(object);
-        const center = box.getCenter(new THREE.Vector3());
-        object.position.sub(center);
-        object.position.y -= box.min.y;
-    }
-
-    setupEventListeners() {
-        window.addEventListener('resize', () => {
-            if (this.isDestroyed) return;
-            this.camera.aspect = window.innerWidth / window.innerHeight;
-            this.camera.updateProjectionMatrix();
-            this.renderer.setSize(window.innerWidth, window.innerHeight);
-        }, { passive: true });
-
-        document.addEventListener('visibilitychange', () => {
-            if (document.hidden) {
-                if (this.animationId) {
-                    cancelAnimationFrame(this.animationId);
-                    this.animationId = null;
-                }
-            } else if (!this.animationId) {
-                this.startRenderLoop();
-            }
-        });
-    }
-
-    startRenderLoop() {
-        if (this.animationId || this.isDestroyed) return;
-
-        const animate = () => {
-            this.animationId = requestAnimationFrame(animate);
-            const delta = this.clock.getDelta();
-            if (this.controls) this.controls.update();
-            if (this.vrm) this.vrm.update(delta);
-            if (this.mixer) this.mixer.update(delta);
-            this.renderer.render(this.scene, this.camera);
-        };
-
-        animate();
-    }
-
-    triggerHaptic(type = 'success') {
-        const wa = window.Telegram?.WebApp;
-        if (wa?.HapticFeedback) wa.HapticFeedback.notificationOccurred(type);
-    }
-
-    handleFatalError(error) {
-        console.error('Fatal error:', error);
-        this.triggerHaptic('error');
-        const wa = window.Telegram?.WebApp;
-        const msg = `Ошибка: ${error.message || error}`;
-        wa ? wa.showAlert(msg) : alert(msg);
-        this.destroy();
-    }
-
-    destroy() {
-        this.isDestroyed = true;
-        if (this.animationId) cancelAnimationFrame(this.animationId);
-        if (this.mixer) {
-            this.mixer.stopAllAction();
-            this.mixer = null;
-        }
-        if (this.controls) this.controls.dispose();
-        if (this.vrm) {
-            this.scene.remove(this.vrm.scene);
+        constructor() {
+            this.scene = new THREE.Scene();
+            this.camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 100);
+            this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
+            this.clock = new THREE.Clock();
             this.vrm = null;
+            this.mixer = null;
+            this.controls = null;
+            this.animationId = null;
+            this.isDestroyed = false;
+
+            this.init().catch(err => this.handleFatalError(err));
         }
-        if (this.renderer) {
-            this.renderer.dispose();
-            if (this.renderer.forceContextLoss) this.renderer.forceContextLoss();
-            this.renderer.domElement.remove();
-            this.renderer = null;
+
+        async init() {
+            if (this.isDestroyed) return;
+
+            this.setupTelegram();
+            this.setupRenderer();
+            this.setupCamera();
+            this.setupControls();
+            this.setupLights();
+            await this.loadModel();
+            this.setupEventListeners();
+            this.startRenderLoop();
         }
-        this.scene = null;
-        this.camera = null;
-        this.clock = null;
+
+        setupTelegram() {
+            const wa = window.Telegram?.WebApp;
+            if (!wa) return;
+            wa.ready();
+            wa.expand();
+            wa.enableClosingConfirmation();
+            wa.setBackgroundColor('#000000');
+            wa.setHeaderColor('#000000');
+            wa.disableVerticalSwipes();
+        }
+
+        setupRenderer() {
+            this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            this.renderer.setSize(window.innerWidth, window.innerHeight);
+            this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+            this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            this.renderer.toneMappingExposure = 1.0;
+            this.renderer.shadowMap.enabled = true;
+            this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.body.appendChild(this.renderer.domElement);
+        }
+
+        setupCamera() {
+            this.camera.position.set(0, 1.4, 2.2);
+        }
+
+        setupControls() {
+            this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+            this.controls.enableDamping = true;
+            this.controls.dampingFactor = 0.05;
+            this.controls.screenSpacePanning = false;
+            this.controls.minDistance = 1.2;
+            this.controls.maxDistance = 4.0;
+            this.controls.minPolarAngle = Math.PI * 0.35;
+            this.controls.maxPolarAngle = Math.PI * 0.65;
+            this.controls.target.set(0, 1.35, 0);
+            this.controls.update();
+        }
+
+        setupLights() {
+            const hemi = new THREE.HemisphereLight(0xffffff, 0x444488, 0.8);
+            hemi.position.set(0, 20, 0);
+            this.scene.add(hemi);
+
+            const main = new THREE.DirectionalLight(0xfff0ea, 1.4);
+            main.position.set(3, 5, 4);
+            main.castShadow = true;
+            main.shadow.mapSize.width = 2048;
+            main.shadow.mapSize.height = 2048;
+            main.shadow.camera.near = 0.5;
+            main.shadow.camera.far = 50;
+            main.shadow.camera.left = -10;
+            main.shadow.camera.right = 10;
+            main.shadow.camera.top = 10;
+            main.shadow.camera.bottom = -10;
+            this.scene.add(main);
+
+            const fill = new THREE.DirectionalLight(0xe0c3fc, 0.7);
+            fill.position.set(-4, 3, -3);
+            this.scene.add(fill);
+        }
+
+        async loadModel() {
+            const loader = new GLTFLoader();
+            loader.register(parser => new VRMLoaderPlugin(parser));
+
+            const modelUrl = 'https://raw.githubusercontent.com/vrm-c/UniVRM/master/Tests/Models/Alicia_vrm-0.51/AliciaSolid_vrm-0.51.vrm';
+            const gltf = await loader.loadAsync(modelUrl);
+            const vrm = gltf.userData.vrm;
+
+            if (!vrm) throw new Error('Failed to load VRM model');
+
+            if (parseFloat(vrm.meta.vrmVersion) < 1) {
+                await VRMUtils.rotateVRM0(vrm);
+            }
+
+            VRMUtils.removeUnnecessaryJoints(vrm.scene);
+
+            this.vrm = vrm;
+            this.scene.add(vrm.scene);
+
+            this.centerModel(vrm.scene);
+
+            if (vrm.lookAt) vrm.lookAt.target = this.camera;
+
+            if (vrm.expressionManager) vrm.expressionManager.setValue('happy', 0.5);
+
+            if (gltf.animations && gltf.animations.length) {
+                this.mixer = new THREE.AnimationMixer(vrm.scene);
+                gltf.animations.forEach(clip => this.mixer.clipAction(clip).play());
+            }
+
+            this.triggerHaptic('success');
+        }
+
+        centerModel(object) {
+            const box = new THREE.Box3().setFromObject(object);
+            const center = box.getCenter(new THREE.Vector3());
+            object.position.sub(center);
+            object.position.y -= box.min.y;
+        }
+
+        setupEventListeners() {
+            window.addEventListener('resize', () => {
+                if (this.isDestroyed) return;
+                this.camera.aspect = window.innerWidth / window.innerHeight;
+                this.camera.updateProjectionMatrix();
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+            }, { passive: true });
+
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) {
+                    if (this.animationId) {
+                        cancelAnimationFrame(this.animationId);
+                        this.animationId = null;
+                    }
+                } else if (!this.animationId) {
+                    this.startRenderLoop();
+                }
+            });
+        }
+
+        startRenderLoop() {
+            if (this.animationId || this.isDestroyed) return;
+
+            const animate = () => {
+                this.animationId = requestAnimationFrame(animate);
+                const delta = this.clock.getDelta();
+                if (this.controls) this.controls.update();
+                if (this.vrm) this.vrm.update(delta);
+                if (this.mixer) this.mixer.update(delta);
+                this.renderer.render(this.scene, this.camera);
+            };
+
+            animate();
+        }
+
+        triggerHaptic(type = 'success') {
+            const wa = window.Telegram?.WebApp;
+            if (wa?.HapticFeedback) wa.HapticFeedback.notificationOccurred(type);
+        }
+
+        handleFatalError(error) {
+            console.error('Fatal error:', error);
+            this.triggerHaptic('error');
+            const wa = window.Telegram?.WebApp;
+            const msg = `Ошибка: ${error.message || error}`;
+            wa ? wa.showAlert(msg) : alert(msg);
+            this.destroy();
+        }
+
+        destroy() {
+            this.isDestroyed = true;
+            if (this.animationId) cancelAnimationFrame(this.animationId);
+            if (this.mixer) {
+                this.mixer.stopAllAction();
+                this.mixer = null;
+            }
+            if (this.controls) this.controls.dispose();
+            if (this.vrm) {
+                this.scene.remove(this.vrm.scene);
+                this.vrm = null;
+            }
+            if (this.renderer) {
+                this.renderer.dispose();
+                if (this.renderer.forceContextLoss) this.renderer.forceContextLoss();
+                this.renderer.domElement.remove();
+                this.renderer = null;
+            }
+            this.scene = null;
+            this.camera = null;
+            this.clock = null;
+        }
     }
-}
 
-let viewer = null;
-const start = () => {
-    if (viewer) return;
-    viewer = new VRMViewer();
-};
+    let viewer = null;
+    const start = () => {
+        if (viewer) return;
+        viewer = new VRMViewer();
+    };
 
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', start, { once: true });
-} else {
-    start();
-}
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', start, { once: true });
+    } else {
+        start();
+    }
 
-window.addEventListener('beforeunload', () => {
-    if (viewer) viewer.destroy();
-}, { once: true });
+    window.addEventListener('beforeunload', () => {
+        if (viewer) viewer.destroy();
+    }, { once: true });
 </script>
 </body>
 </html>
