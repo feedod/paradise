@@ -2,889 +2,814 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' https:; style-src 'self' 'unsafe-inline'; script-src 'self' https:; connect-src 'self' https:; media-src 'self' https: blob:">
+    <title>Airi Companion</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pixi.js@7.x/dist/pixi.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@latest/dist/cubism4.min.js"></script>
     <style>
-        * {
-            box-sizing: border-box;
-            -webkit-user-select: none !important;
-            -moz-user-select: none !important;
-            user-select: none !important;
-            -webkit-tap-highlight-color: transparent;
-            -webkit-touch-callout: none;
+        :root {
+            --tg-bg-color: #000000;
+            --tg-text-color: #ffffff;
+            --tg-hint-color: #999999;
+            --tg-secondary-bg: #1c1c1e;
+            --tg-accent: #2481cc;
         }
-        html, body {
+
+        * {
             margin: 0;
             padding: 0;
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-            background: #000;
-            touch-action: none;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
         }
-        canvas {
-            display: block;
-            position: absolute;
-            top: 0;
-            left: 0;
+
+        html, body {
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background: var(--tg-bg-color);
+            color: var(--tg-text-color);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+            position: fixed;
+        }
+
+        #app {
             width: 100%;
             height: 100%;
+            position: relative;
+            isolation: isolate;
+        }
+
+        #avatar-container {
+            width: 100%;
+            height: 100%;
+            position: absolute;
             z-index: 1;
         }
-        #chat-interface {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            max-width: 50vw;
-            height: 100%;
-            z-index: 2;
-            transition: bottom 0.3s ease, max-width 0.3s ease;
-            pointer-events: auto;
-            display: flex;
-            flex-direction: column;
-        }
-        #messages-list {
-            flex: 1;
-            overflow-y: auto;
-            padding: 8px 16px;
-            display: flex;
-            flex-direction: column;
-            scrollbar-width: none;
-            -ms-overflow-style: none;
-            background: rgba(0, 0, 0, 0.5);
-            backdrop-filter: blur(20px) saturate(180%);
-            border-radius: 16px 16px 0 0;
-        }
-        #messages-list::-webkit-scrollbar {
-            display: none;
-        }
-        #messages-list:empty {
-            display: none;
-        }
-        .message-bubble {
-            max-width: 100%;
-            padding: 8px 12px;
-            border-radius: 16px;
-            margin-bottom: 8px;
-            font-size: 14px;
-            line-height: 1.3;
-            word-wrap: break-word;
-            backdrop-filter: blur(20px) saturate(180%);
-            background-color: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: #fff;
-            position: relative;
-            animation: slideIn 0.5s ease-out;
+
+        #voice-indicator {
+            position: absolute;
+            bottom: 140px;
+            left: 50%;
+            transform: translateX(-50%) scale(0);
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: var(--tg-accent);
             opacity: 0;
-            transform: translateX(-100%);
-        }
-        .message-bubble.user {
-            align-self: flex-end;
-            background-color: rgba(0, 122, 255, 0.2);
-            border-color: rgba(0, 122, 255, 0.3);
-            transform: translateX(100%);
-        }
-        .message-bubble.ai {
-            align-self: flex-start;
-            background-color: rgba(255, 255, 255, 0.05);
-            border-color: rgba(255, 255, 255, 0.1);
-        }
-        .message-bubble.animate-in {
-            opacity: 1;
-            transform: translateX(0);
-        }
-        .message-time {
-            font-size: 11px;
-            color: rgba(255, 255, 255, 0.6);
-            margin-top: 4px;
-            text-align: right;
-        }
-        .loading-dots {
-            display: flex;
-            justify-content: flex-start;
-            align-items: center;
-            height: 20px;
-            padding: 8px 12px;
-        }
-        .dot {
-            width: 6px;
-            height: 6px;
-            margin: 0 2px;
-            background: #fff;
-            border-radius: 50%;
-            animation: dotPulse 1.2s infinite ease-in-out;
-        }
-        .dot:nth-child(2) { animation-delay: 0.2s; }
-        .dot:nth-child(3) { animation-delay: 0.4s; }
-        @keyframes dotPulse {
-            0%, 80%, 100% { transform: scale(0); }
-            40% { transform: scale(1); }
-        }
-        #input-container {
-            display: flex;
-            align-items: center;
-            padding: 12px 16px;
-            background: rgba(0, 0, 0, 0.5);
-            backdrop-filter: blur(20px) saturate(180%);
-            border-radius: 0 0 16px 16px;
-        }
-        #chat-input {
-            flex: 1;
-            padding: 12px 16px;
-            border: none;
-            border-radius: 20px;
-            background: rgba(255, 255, 255, 0.05);
-            color: #fff;
-            font-size: 16px;
-            backdrop-filter: blur(20px) saturate(180%);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            transition: all 0.3s ease;
-        }
-        #chat-input:focus {
-            background: rgba(255, 255, 255, 0.1);
-            border-color: rgba(255, 255, 255, 0.2);
-            outline: none;
-        }
-        #chat-input:disabled {
-            opacity: 0.5;
-            pointer-events: none;
-        }
-        #voice-button, #send-button {
-            margin-left: 12px;
-            padding: 0;
-            border: none;
-            border-radius: 50%;
-            background: rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(20px) saturate(180%);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            cursor: pointer;
+            transition: transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1), 
+                        opacity 200ms ease;
+            z-index: 100;
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 48px;
-            height: 48px;
-            transition: all 0.3s ease;
+            pointer-events: none;
         }
-        #voice-button.disabled, #send-button.disabled {
-            opacity: 0.3;
-            cursor: not-allowed;
+
+        #voice-indicator.active {
+            transform: translateX(-50%) scale(1);
+            opacity: 0.9;
         }
-        #voice-button.listening {
-            animation: micPulse 1.5s infinite;
+
+        #voice-indicator::after {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: inherit;
+            animation: voicePulse 1.5s ease-out infinite;
         }
-        @keyframes micPulse {
-            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(0, 122, 255, 0.7); }
-            70% { transform: scale(1.05); box-shadow: 0 0 0 12px rgba(0, 122, 255, 0); }
-            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(0, 122, 255, 0); }
+
+        #voice-indicator::before {
+            content: '🎤';
+            font-size: 32px;
+            position: relative;
+            z-index: 2;
         }
-        .mic-icon, .send-icon {
-            width: 24px;
-            height: 24px;
-            fill: #fff;
-            transition: fill 0.3s ease;
+
+        @keyframes voicePulse {
+            0%, 100% { transform: scale(1); opacity: 0.7; }
+            50% { transform: scale(1.2); opacity: 0; }
         }
-        #send-button.disabled .send-icon {
-            fill: #888;
+
+        #status-notification {
+            position: absolute;
+            top: 24px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-20px);
+            background: var(--tg-secondary-bg);
+            backdrop-filter: blur(20px);
+            padding: 12px 24px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 500;
+            opacity: 0;
+            transition: transform 300ms ease, opacity 200ms ease;
+            white-space: nowrap;
+            z-index: 1000;
+            pointer-events: none;
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
-        @keyframes slideIn {
-            from { opacity: 0; transform: translateX(-100%); }
-            to { opacity: 1; transform: translateX(0); }
+
+        #status-notification.visible {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
         }
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
+
+        #debug-stats {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 11px;
+            font-family: 'Menlo', 'Monaco', monospace;
+            color: #00ff88;
+            z-index: 1000;
+            display: none;
+            border: 1px solid rgba(0, 255, 136, 0.2);
+        }
+
+        #debug-stats.visible {
+            display: block;
+        }
+
+        .notification {
+            position: absolute;
+            bottom: 240px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--tg-secondary-bg);
+            backdrop-filter: blur(30px);
+            padding: 12px 20px;
+            border-radius: 16px;
+            font-size: 15px;
+            max-width: 280px;
+            text-align: center;
+            opacity: 0;
+            transition: all 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
+            pointer-events: none;
+            z-index: 100;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .notification.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(-10px);
+        }
+
+        @media (max-height: 700px) {
+            #voice-indicator {
+                bottom: 100px;
+                width: 70px;
+                height: 70px;
+            }
+            .notification {
+                bottom: 180px;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            * {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
         }
     </style>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script type="importmap">
-        {
-            "imports": {
-                "three": "https://cdn.jsdelivr.net/npm/three@0.181.2/build/three.module.js",
-                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.181.2/examples/jsm/",
-                "three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.1.0/lib/three-vrm.module.js"
-            }
-        }
-    </script>
 </head>
 <body>
-    <div id="chat-interface">
-        <div id="messages-list"></div>
-        <div id="input-container">
-            <input type="text" id="chat-input" placeholder="Type a message...">
-            <button id="voice-button">
-                <svg class="mic-icon" viewBox="0 0 24 24">
-                    <path d="M12 2C10.3431 2 9 3.34315 9 5V11C9 12.6569 10.3431 14 12 14C13.6569 14 15 12.6569 15 11V5C15 3.34315 13.6569 2 12 2ZM7 5C7 2.23858 9.23858 0 12 0C14.7614 0 17 2.23858 17 5V11C17 13.7614 14.7614 16 12 16C9.23858 16 7 13.7614 7 11V5ZM5 10C5.55228 10 6 10.4477 6 11C6 14.3094 8.05719 17.1659 11 17.8435V20H10C9.44772 20 9 20.4477 9 21C9 21.5523 9.44772 22 10 22H14C14.5523 22 15 21.5523 15 21C15 20.4477 14.5523 20 14 20H13V17.8435C15.9428 17.1659 18 14.3094 18 11C18 10.4477 18.4477 10 19 10C19.5523 10 20 10.4477 20 11C20 15.4183 16.4183 19 12 19C7.58172 19 4 15.4183 4 11C4 10.4477 4.44772 10 5 10Z"/>
-                </svg>
-            </button>
-            <button id="send-button" style="display: none;">
-                <svg class="send-icon" viewBox="0 0 24 24">
-                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-                </svg>
-            </button>
-        </div>
+    <div id="app">
+        <div id="avatar-container"></div>
+        <div id="voice-indicator"></div>
+        <div id="status-notification"></div>
+        <div id="debug-stats"></div>
+        <div class="notification" id="system-notification"></div>
     </div>
+
 <script type="module">
-    import * as THREE from 'three';
-    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-    import { VRMLoaderPlugin, VRMUtils, VRMHumanBoneName, VRMLookAt } from 'three-vrm';
+class AiriSystem {
+    static instance = null;
 
-    class CompanionViewer {
-        constructor() {
-            this.scene = new THREE.Scene();
-            this.camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 1000);
-            this.renderer = new THREE.WebGLRenderer({ 
-                antialias: true, 
-                alpha: false, 
-                powerPreference: 'high-performance', 
-                logarithmicDepthBuffer: true 
+    static getInstance() {
+        if (!AiriSystem.instance) {
+            AiriSystem.instance = new AiriSystem();
+        }
+        return AiriSystem.instance;
+    }
+
+    constructor() {
+        this.tg = window.Telegram?.WebApp;
+        this.pixiApp = null;
+        this.live2dModel = null;
+        this.avatarManager = new AvatarManager();
+        this.voiceService = new VoiceService();
+        this.interactionHandler = new InteractionHandler();
+        this.systemState = {
+            isSpeaking: false,
+            isListening: false,
+            currentEmotion: 'neutral',
+            modelScale: 0.18,
+            modelPosition: { x: 0, y: 0 }
+        };
+
+        this.initPromise = this.initialize();
+    }
+
+    async initialize() {
+        try {
+            await this.initTelegram();
+            await this.initGraphics();
+            await this.initAvatar();
+            this.setupEventHandlers();
+            this.startSystemLoops();
+            this.showStatus('Система готова');
+        } catch (error) {
+            this.handleFatalError(error);
+        }
+    }
+
+    async initTelegram() {
+        if (!this.tg) return;
+        
+        this.tg.ready();
+        this.tg.expand();
+        this.tg.disableVerticalSwipes();
+        this.tg.setHeaderColor('secondary_bg_color');
+        this.tg.setBackgroundColor('bg_color');
+        
+        if (this.tg.isVersionAtLeast('6.9')) {
+            this.tg.requestFullscreen();
+        }
+        
+        const themeParams = this.tg.themeParams || {};
+        document.documentElement.style.setProperty('--tg-bg-color', themeParams.bg_color || '#000000');
+        document.documentElement.style.setProperty('--tg-text-color', themeParams.text_color || '#ffffff');
+        document.documentElement.style.setProperty('--tg-secondary-bg', themeParams.secondary_bg_color || '#1c1c1e');
+        document.documentElement.style.setProperty('--tg-accent', themeParams.button_color || '#2481cc');
+    }
+
+    async initGraphics() {
+        const canvas = document.createElement('canvas');
+        canvas.id = 'live2d-canvas';
+        
+        this.pixiApp = new PIXI.Application({
+            view: canvas,
+            backgroundAlpha: 0,
+            resizeTo: window,
+            powerPreference: 'high-performance',
+            antialias: true,
+            resolution: Math.min(window.devicePixelRatio, 2),
+            autoDensity: true
+        });
+
+        const container = document.getElementById('avatar-container');
+        container.appendChild(this.pixiApp.view);
+        
+        new ResizeObserver(() => {
+            this.pixiApp.resize();
+            this.avatarManager.centerModel();
+        }).observe(container);
+    }
+
+    async initAvatar() {
+        const modelConfig = {
+            id: 'hiyori',
+            name: 'Hiyori',
+            url: 'https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display/test/assets/hiyori/hiyori_pro_t10.model3.json'
+        };
+
+        this.live2dModel = await PIXI.live2d.Live2DModel.from(modelConfig.url, {
+            autoInteract: false,
+            autoUpdate: false
+        });
+
+        this.live2dModel.scale.set(this.systemState.modelScale);
+        this.live2dModel.visible = true;
+        this.pixiApp.stage.addChild(this.live2dModel);
+
+        this.avatarManager.setModel(this.live2dModel);
+        this.avatarManager.centerModel();
+    }
+
+    setupEventHandlers() {
+        window.addEventListener('keydown', (event) => {
+            if (event.shiftKey && event.key === 'D') {
+                document.getElementById('debug-stats').classList.toggle('visible');
+            }
+            if (event.shiftKey && event.key === 'R') {
+                this.avatarManager.centerModel();
+            }
+        });
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                cancelAnimationFrame(this.animationFrame);
+            } else {
+                this.startAnimationLoop();
+            }
+        });
+
+        if (this.tg?.onEvent) {
+            this.tg.onEvent('themeChanged', () => {
+                const theme = this.tg.themeParams;
+                document.documentElement.style.setProperty('--tg-bg-color', theme.bg_color);
+                document.documentElement.style.setProperty('--tg-text-color', theme.text_color);
             });
-            this.clock = new THREE.Clock();
-            this.vrm = null;
-            this.mixer = null;
-            this.controls = null;
-            this.animationId = null;
-            this.isDestroyed = false;
-            this.lookTarget = new THREE.Object3D();
-            this.scene.add(this.lookTarget);
-            this.raycaster = new THREE.Raycaster();
-            this.plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
-            this.lastInteractionTime = 0;
-            this.pointerPosition = new THREE.Vector2();
-            this.intersectPoint = new THREE.Vector3();
-            this.blinkTimer = 0;
-            this.speechSynth = window.speechSynthesis;
-            this.recognition = null;
-            this.isListening = false;
-            this.lipSyncInterval = null;
-            this.currentUtterance = null;
-            this.messages = [];
-            this.audioContext = null;
-            this.analyser = null;
-            this.micStream = null;
-            this.micVolume = 0;
-            this.keyboardHeight = 0;
-            this.defaultViewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-            this.hasMicAccess = false;
-            this.preferredMicDeviceId = null;
-            this.speechTimeout = null;
-
-            this.initAudioDevices().catch(console.error);
-
-            if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
-                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-                this.recognition = new SpeechRecognition();
-                this.recognition.continuous = false;
-                this.recognition.interimResults = false;
-                this.recognition.lang = navigator.language || 'ru-RU';
-                this.recognition.onresult = (event) => this.handleSpeechResult(event);
-                this.recognition.onerror = (event) => this.handleSpeechError(event);
-                this.recognition.onend = () => this.handleSpeechEnd();
-            }
-
-            this.init().catch(err => this.handleFatalError(err));
         }
+    }
 
-        async initAudioDevices() {
-            try {
-                await navigator.mediaDevices.getUserMedia({ audio: true });
-                this.hasMicAccess = true;
-                const devices = await navigator.mediaDevices.enumerateDevices();
-                const audioInputs = devices.filter(d => d.kind === 'audioinput');
-                const headsetMic = audioInputs.find(d => d.label.toLowerCase().includes('headset') || d.label.toLowerCase().includes('earphone'));
-                this.preferredMicDeviceId = headsetMic ? headsetMic.deviceId : audioInputs[0]?.deviceId;
-            } catch (err) {
-                console.warn('Mic access denied', err);
-                this.hasMicAccess = false;
-            }
-            this.updateMicButtonState();
-        }
+    startSystemLoops() {
+        this.startAnimationLoop();
+        this.startBehaviorLoop();
+        this.startStatsLoop();
+    }
 
-        async init() {
-            if (this.isDestroyed) return;
-
-            this.setupTelegram();
-            this.setupRenderer();
-            this.setupCamera();
-            this.setupControls();
-            this.setupLights();
-            await this.loadModel();
-            this.setupEventListeners();
-            this.setupChatInterface();
-            this.startRenderLoop();
-
-            this.speak('Привет! Чем могу помочь?');
-        }
-
-        setupTelegram() {
-            const wa = window.Telegram?.WebApp;
-            if (!wa) return;
-            wa.ready();
-            wa.setBackgroundColor('#000000');
-            wa.setHeaderColor('#000000');
-            wa.disableVerticalSwipes();
-        }
-
-        setupRenderer() {
-            this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-            this.renderer.setSize(window.innerWidth, window.innerHeight);
-            this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-            this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-            this.renderer.toneMappingExposure = 1.0;
-            this.renderer.shadowMap.enabled = false;
-            document.body.appendChild(this.renderer.domElement);
-        }
-
-        setupCamera() {
-            this.camera.position.set(0, 1.4, 3.5);
-        }
-
-        setupControls() {
-            this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-            this.controls.enableDamping = true;
-            this.controls.dampingFactor = 0.05;
-            this.controls.screenSpacePanning = false;
-            this.controls.enableRotate = false;
-            this.controls.enableZoom = false;
-            this.controls.enablePan = false;
-            this.controls.minDistance = 0.5;
-            this.controls.maxDistance = 5.0;
-            this.controls.minPolarAngle = Math.PI * 0.35;
-            this.controls.maxPolarAngle = Math.PI * 0.65;
-            this.controls.target.set(0, 1.35, 0);
-            this.controls.update();
-        }
-
-        setupLights() {
-            const hemi = new THREE.HemisphereLight(0xffffff, 0x444488, 0.8);
-            hemi.position.set(0, 20, 0);
-            this.scene.add(hemi);
-
-            const main = new THREE.DirectionalLight(0xfff0ea, 1.4);
-            main.position.set(3, 5, 4);
-            this.scene.add(main);
-
-            const fill = new THREE.DirectionalLight(0xe0c3fc, 0.7);
-            fill.position.set(-4, 3, -3);
-            this.scene.add(fill);
-        }
-
-        async loadModel() {
-            const loader = new GLTFLoader();
-            loader.register(parser => new VRMLoaderPlugin(parser));
-
-            const modelUrl = 'https://raw.githubusercontent.com/vrm-c/UniVRM/master/Tests/Models/Alicia_vrm-0.51/AliciaSolid_vrm-0.51.vrm';
-            const gltf = await loader.loadAsync(modelUrl);
-            const vrm = gltf.userData.vrm;
-
-            if (!vrm) throw new Error('Failed to load VRM model');
-
-            const version = parseFloat(vrm.meta.vrmVersion || '0');
-            if (version < 1) {
-                await VRMUtils.rotateVRM0(vrm);
-            }
-
-            VRMUtils.removeUnnecessaryJoints(vrm.scene);
-            VRMUtils.removeUnnecessaryVertices(vrm.scene);
-
-            this.vrm = vrm;
-            this.scene.add(vrm.scene);
-
-            this.centerModel(vrm.scene);
-
-            const box = new THREE.Box3().setFromObject(vrm.scene, true);
-            const modelCenter = box.getCenter(new THREE.Vector3());
-            const modelSize = box.getSize(new THREE.Vector3());
-            const headHeight = modelCenter.y + modelSize.y / 4;
-
-            this.controls.target.set(0, headHeight, 0);
-            this.camera.position.set(0, headHeight, modelSize.z * 1.5 + 1.0);
-            this.controls.minDistance = modelSize.z * 0.3;
-            this.controls.maxDistance = modelSize.z * 4;
-            this.controls.update();
-
-            this.setNeutralPose();
-
-            if (vrm.lookAt) {
-                if (vrm.lookAt.applier) {
-                    vrm.lookAt.applier.lookAtType = VRMLookAt.BONE;
+    startAnimationLoop() {
+        const animate = (time) => {
+            this.animationFrame = requestAnimationFrame(animate);
+            
+            if (this.live2dModel) {
+                this.live2dModel.update(this.pixiApp.ticker.deltaTime);
+                this.avatarManager.updateEyeTracking();
+                
+                if (this.systemState.isSpeaking) {
+                    this.avatarManager.updateLipSync();
                 }
-                vrm.lookAt.target = this.lookTarget;
             }
+            
+            this.pixiApp.render();
+        };
+        
+        animate(0);
+    }
 
-            if (vrm.expressionManager) {
-                vrm.expressionManager.setValue('happy', 0.3);
+    startBehaviorLoop() {
+        setInterval(() => {
+            if (!this.systemState.isSpeaking && !this.systemState.isListening) {
+                this.avatarManager.triggerRandomBehavior();
             }
+        }, 8000 + Math.random() * 7000);
+    }
 
-            if (gltf.animations && gltf.animations.length) {
-                this.mixer = new THREE.AnimationMixer(vrm.scene);
-                gltf.animations.forEach(clip => {
-                    const action = this.mixer.clipAction(clip);
-                    action.play();
-                });
+    startStatsLoop() {
+        let frameCount = 0;
+        let lastTime = performance.now();
+        
+        setInterval(() => {
+            const currentTime = performance.now();
+            const fps = Math.round((frameCount * 1000) / (currentTime - lastTime));
+            
+            const stats = document.getElementById('debug-stats');
+            if (stats.classList.contains('visible')) {
+                const memory = performance.memory ? 
+                    ` | MEM: ${Math.round(performance.memory.usedJSHeapSize / 1048576)}MB` : '';
+                stats.textContent = `FPS: ${fps}${memory}`;
             }
+            
+            frameCount = 0;
+            lastTime = currentTime;
+        }, 1000);
+    }
 
-            this.triggerHaptic('success');
+    async processVoiceCommand(audioData) {
+        try {
+            this.systemState.isListening = true;
+            this.showVoiceIndicator(true);
+            this.avatarManager.setEmotion('listening');
+            
+            const text = await this.voiceService.recognizeSpeech(audioData);
+            
+            if (text) {
+                this.showNotification(`Вы: "${text}"`, 2000);
+                const response = await this.generateResponse(text);
+                await this.speakResponse(response);
+            }
+            
+        } catch (error) {
+            this.showStatus('Ошибка распознавания');
+        } finally {
+            this.systemState.isListening = false;
+            this.showVoiceIndicator(false);
+            this.avatarManager.setEmotion('neutral');
         }
+    }
 
-        setNeutralPose() {
-            if (!this.vrm) return;
+    async generateResponse(userInput) {
+        const responses = [
+            `Я слышала: "${userInput}". Расскажите подробнее!`,
+            `Интересно! "${userInput}" — что вы имеете в виду?`,
+            `Запомнила: "${userInput}". Чем еще могу помочь?`,
+            `Поняла вас насчёт "${userInput}". Продолжим разговор?`
+        ];
+        
+        return responses[Math.floor(Math.random() * responses.length)];
+    }
 
-            const leftUpperArm = this.vrm.humanoid.getNormalizedBoneNode(VRMHumanBoneName.LeftUpperArm);
-            if (leftUpperArm) {
-                leftUpperArm.rotation.set(-Math.PI / 2, 0, 0);
-            }
-
-            const rightUpperArm = this.vrm.humanoid.getNormalizedBoneNode(VRMHumanBoneName.RightUpperArm);
-            if (rightUpperArm) {
-                rightUpperArm.rotation.set(-Math.PI / 2, 0, 0);
-            }
-        }
-
-        setEmotion(expression, value = 1.0) {
-            if (this.vrm?.expressionManager) {
-                this.vrm.expressionManager.setValue(expression, value);
-            }
-        }
-
-        centerModel(object) {
-            const box = new THREE.Box3().setFromObject(object, true);
-            const center = box.getCenter(new THREE.Vector3());
-            object.position.sub(center);
-            object.position.y -= box.min.y;
-        }
-
-        setupEventListeners() {
-            const resizeObserver = new ResizeObserver(entries => {
-                if (this.isDestroyed) return;
-                for (const entry of entries) {
-                    this.camera.aspect = entry.contentRect.width / entry.contentRect.height;
-                    this.camera.updateProjectionMatrix();
-                    this.renderer.setSize(entry.contentRect.width, entry.contentRect.height);
-                }
+    async speakResponse(text) {
+        this.systemState.isSpeaking = true;
+        this.avatarManager.setEmotion('speaking');
+        
+        try {
+            const audioBuffer = await this.voiceService.synthesizeSpeech(text);
+            await this.voiceService.playAudio(audioBuffer, (volume) => {
+                this.avatarManager.updateLipAmplitude(volume);
             });
-            resizeObserver.observe(document.body);
+            
+            this.showNotification(text, 3000);
+            this.avatarManager.setEmotion('happy');
+            
+        } catch (error) {
+            this.showStatus('Ошибка воспроизведения');
+        } finally {
+            this.systemState.isSpeaking = false;
+            this.avatarManager.resetLipSync();
+        }
+    }
 
-            if (window.visualViewport) {
-                window.visualViewport.addEventListener('resize', () => {
-                    const viewportHeight = window.visualViewport.height;
-                    const diff = this.defaultViewportHeight - viewportHeight;
-                    const chatInterface = document.getElementById('chat-interface');
-                    if (diff > 100) {
-                        this.keyboardHeight = diff;
-                        chatInterface.style.bottom = '0';
-                        chatInterface.style.maxHeight = `${viewportHeight - 100}px`;
-                    } else {
-                        this.keyboardHeight = 0;
-                        chatInterface.style.bottom = '0';
-                        chatInterface.style.maxHeight = '50vh';
+    showVoiceIndicator(show) {
+        const indicator = document.getElementById('voice-indicator');
+        indicator.classList.toggle('active', show);
+    }
+
+    showStatus(message, duration = 2000) {
+        const element = document.getElementById('status-notification');
+        element.textContent = message;
+        element.classList.add('visible');
+        
+        setTimeout(() => {
+            element.classList.remove('visible');
+        }, duration);
+    }
+
+    showNotification(message, duration = 3000) {
+        const element = document.getElementById('system-notification');
+        element.textContent = message;
+        element.classList.add('show');
+        
+        setTimeout(() => {
+            element.classList.remove('show');
+        }, duration);
+    }
+
+    handleFatalError(error) {
+        console.error('System failure:', error);
+        this.showStatus('Критическая ошибка системы');
+        
+        if (this.tg?.HapticFeedback) {
+            this.tg.HapticFeedback.notificationOccurred('error');
+        }
+    }
+}
+
+class AvatarManager {
+    constructor() {
+        this.model = null;
+        this.eyeTarget = { x: 0, y: 0 };
+        this.lipAmplitude = 0;
+        this.currentExpression = 'neutral';
+        this.expressionMap = new Map([
+            ['neutral', 'F00'],
+            ['happy', 'F01'],
+            ['surprised', 'F04'],
+            ['listening', 'F06'],
+            ['speaking', 'F01']
+        ]);
+    }
+
+    setModel(model) {
+        this.model = model;
+    }
+
+    centerModel() {
+        if (!this.model || !this.model.parent) return;
+        
+        const screen = this.model.parent;
+        this.model.position.set(
+            screen.width / 2,
+            screen.height / 1.7
+        );
+    }
+
+    updateEyeTracking() {
+        if (!this.model) return;
+        
+        const cursorPos = InteractionHandler.getInstance().getNormalizedCursor();
+        this.eyeTarget.x += (cursorPos.x - this.eyeTarget.x) * 0.1;
+        this.eyeTarget.y += (cursorPos.y - this.eyeTarget.y) * 0.1;
+        
+        try {
+            const core = this.model.internalModel?.coreModel;
+            if (core) {
+                core.setParameterValueById('ParamAngleX', this.eyeTarget.x * 15);
+                core.setParameterValueById('ParamAngleY', this.eyeTarget.y * 15);
+            }
+        } catch (error) {
+        }
+    }
+
+    setEmotion(emotion) {
+        if (!this.model || this.currentExpression === emotion) return;
+        
+        const expressionId = this.expressionMap.get(emotion) || 'F00';
+        
+        try {
+            this.model.expression(expressionId);
+            this.currentExpression = emotion;
+            
+            if (emotion !== 'speaking') {
+                setTimeout(() => {
+                    if (this.currentExpression === emotion) {
+                        this.model.expression('F00');
+                        this.currentExpression = 'neutral';
                     }
-                });
+                }, 2000);
             }
-
-            document.addEventListener('visibilitychange', () => {
-                if (document.hidden) {
-                    if (this.animationId) {
-                        cancelAnimationFrame(this.animationId);
-                        this.animationId = null;
-                    }
-                } else if (!this.animationId) {
-                    this.startRenderLoop();
-                }
-            });
-
-            const updatePointer = (x, y) => {
-                this.pointerPosition.x = (x / window.innerWidth) * 2 - 1;
-                this.pointerPosition.y = - (y / window.innerHeight) * 2 + 1;
-                this.lastInteractionTime = performance.now();
-                this.updateLookTarget();
-            };
-
-            this.renderer.domElement.addEventListener('pointermove', (event) => updatePointer(event.clientX, event.clientY), { passive: true });
-
-            this.renderer.domElement.addEventListener('touchmove', (event) => {
-                if (event.touches.length > 0) {
-                    updatePointer(event.touches[0].clientX, event.touches[0].clientY);
-                }
-            }, { passive: true });
+        } catch (error) {
         }
+    }
 
-        setupChatInterface() {
-            const input = document.getElementById('chat-input');
-            const voiceButton = document.getElementById('voice-button');
-            const sendButton = document.getElementById('send-button');
-
-            input.addEventListener('input', () => {
-                const text = input.value.trim();
-                if (text.length > 0) {
-                    voiceButton.style.display = 'none';
-                    sendButton.style.display = 'flex';
-                    sendButton.classList.toggle('disabled', !text);
-                } else {
-                    voiceButton.style.display = 'flex';
-                    sendButton.style.display = 'none';
-                }
-            });
-
-            input.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    const message = input.value.trim();
-                    if (message) {
-                        this.processUserMessage(message);
-                        input.value = '';
-                        input.blur();
-                        voiceButton.style.display = 'flex';
-                        sendButton.style.display = 'none';
-                    }
-                }
-            });
-
-            sendButton.addEventListener('click', () => {
-                const message = input.value.trim();
-                if (message) {
-                    this.processUserMessage(message);
-                    input.value = '';
-                    input.blur();
-                    voiceButton.style.display = 'flex';
-                    sendButton.style.display = 'none';
-                }
-            });
-
-            voiceButton.addEventListener('click', async () => {
-                if (!this.hasMicAccess || !this.recognition) {
-                    try {
-                        await this.initAudioDevices();
-                    } catch (err) {
-                        return;
-                    }
-                }
-                if (this.isListening) {
-                    this.recognition.stop();
-                } else {
-                    try {
-                        this.recognition.start();
-                        await this.startVolumeAnalysis();
-                        input.disabled = true;
-                        voiceButton.classList.add('listening');
-                        sendButton.style.display = 'none';
-                        this.speechTimeout = setTimeout(() => this.recognition.stop(), 10000); // 10 sec timeout
-                    } catch (err) {
-                        console.warn('Speech recognition start failed:', err);
-                    }
-                }
-            });
+    updateLipSync() {
+        if (!this.model) return;
+        
+        const amplitude = Math.min(this.lipAmplitude * 1.5, 1);
+        const mouthValue = Math.sin(Date.now() * 0.01) * amplitude * 0.5 + amplitude * 0.3;
+        
+        try {
+            const core = this.model.internalModel?.coreModel;
+            if (core) {
+                core.setParameterValueById('ParamMouthOpenY', mouthValue);
+                core.setParameterValueById('ParamMouthForm', amplitude * 0.5);
+            }
+        } catch (error) {
         }
+    }
 
-        async startVolumeAnalysis() {
-            if (this.audioContext) return;
+    updateLipAmplitude(volume) {
+        this.lipAmplitude = volume;
+    }
 
-            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            const constraints = { 
-                audio: { 
-                    deviceId: this.preferredMicDeviceId ? { exact: this.preferredMicDeviceId } : undefined,
-                    echoCancellation: true,
-                    noiseSuppression: true
-                } 
-            };
-            this.micStream = await navigator.mediaDevices.getUserMedia(constraints);
-            const source = this.audioContext.createMediaStreamSource(this.micStream);
-            this.analyser = this.audioContext.createAnalyser();
-            this.analyser.fftSize = 256;
-            source.connect(this.analyser);
-
-            const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
-            const updateVolume = () => {
-                if (!this.isListening || this.isDestroyed) return;
-                this.analyser.getByteFrequencyData(dataArray);
-                this.micVolume = dataArray.reduce((a, b) => a + b, 0) / dataArray.length / 255;
-                const micButton = document.getElementById('voice-button');
-                if (micButton) {
-                    micButton.style.transform = `scale(${1 + this.micVolume * 0.3})`;
-                }
-                requestAnimationFrame(updateVolume);
-            };
-            updateVolume();
+    resetLipSync() {
+        this.lipAmplitude = 0;
+        
+        try {
+            const core = this.model.internalModel?.coreModel;
+            if (core) {
+                core.setParameterValueById('ParamMouthOpenY', 0);
+                core.setParameterValueById('ParamMouthForm', 0);
+            }
+        } catch (error) {
         }
+    }
 
-        stopVolumeAnalysis() {
-            if (this.micStream) {
-                this.micStream.getTracks().forEach(track => track.stop());
-                this.micStream = null;
-            }
-            if (this.audioContext && this.audioContext.state !== 'closed') {
-                this.audioContext.close();
-                this.audioContext = null;
-            }
-            this.analyser = null;
-            this.micVolume = 0;
+    triggerRandomBehavior() {
+        if (!this.model || Math.random() > 0.7) return;
+        
+        const behaviors = ['blink', 'glance', 'smile'];
+        const behavior = behaviors[Math.floor(Math.random() * behaviors.length)];
+        
+        switch (behavior) {
+            case 'blink':
+                this.triggerBlink();
+                break;
+            case 'glance':
+                this.triggerGlance();
+                break;
+            case 'smile':
+                this.setEmotion('happy');
+                break;
         }
+    }
 
-        updateMicButtonState() {
-            const voiceButton = document.getElementById('voice-button');
-            if (voiceButton && (!this.hasMicAccess || !this.recognition)) {
-                voiceButton.classList.add('disabled');
-            } else if (voiceButton) {
-                voiceButton.classList.remove('disabled');
-            }
-        }
-
-        handleSpeechResult(event) {
-            const transcript = Array.from(event.results).map(result => result[0].transcript).join('').trim();
-            if (transcript) {
-                this.processUserMessage(transcript);
-            }
-            this.recognition.stop();
-        }
-
-        handleSpeechError(event) {
-            console.warn('Speech recognition error:', event.error);
-            if (event.error === 'not-allowed') {
-                this.hasMicAccess = false;
-                this.updateMicButtonState();
-            }
-            this.handleSpeechEnd();
-        }
-
-        handleSpeechEnd() {
-            this.isListening = false;
-            const voiceButton = document.getElementById('voice-button');
-            if (voiceButton) {
-                voiceButton.classList.remove('listening');
-            }
-            this.stopVolumeAnalysis();
-            const input = document.getElementById('chat-input');
-            if (input) {
-                input.disabled = false;
-            }
-            if (this.speechTimeout) {
-                clearTimeout(this.speechTimeout);
-                this.speechTimeout = null;
-            }
-        }
-
-        processUserMessage(message) {
-            this.addMessage(message, 'user');
-            this.showLoadingIndicator();
+    triggerBlink() {
+        try {
+            this.model.expression('F05');
             setTimeout(() => {
-                const response = this.generateAIResponse(message);
-                this.hideLoadingIndicator();
-                this.addMessage(response, 'ai');
-                this.speak(response);
-                this.setEmotionBasedOnText(response);
-            }, 1000);
-        }
-
-        generateAIResponse(userMessage) {
-            return `Вы сказали: "${userMessage}". Чем еще могу помочь?`;
-        }
-
-        setEmotionBasedOnText(text) {
-            if (text.includes('?')) {
-                this.setEmotion('surprised', 0.6);
-            } else if (text.includes('!')) {
-                this.setEmotion('happy', 0.8);
-            } else {
-                this.setEmotion('neutral', 1.0);
-            }
-            setTimeout(() => this.setEmotion('happy', 0.3), 2000);
-        }
-
-        addMessage(text, sender) {
-            const messagesList = document.getElementById('messages-list');
-            const bubble = document.createElement('div');
-            bubble.classList.add('message-bubble', sender);
-            bubble.textContent = text;
-            const time = document.createElement('div');
-            time.classList.add('message-time');
-            time.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            bubble.appendChild(time);
-            messagesList.appendChild(bubble);
-            setTimeout(() => bubble.classList.add('animate-in'), 10);
-            messagesList.scrollTop = messagesList.scrollHeight;
-            this.messages.push({ text, sender });
-            if (this.messages.length > 5) {
-                const firstChild = messagesList.firstChild;
-                if (firstChild) firstChild.remove();
-                this.messages.shift();
-            }
-        }
-
-        showLoadingIndicator() {
-            const messagesList = document.getElementById('messages-list');
-            const loading = document.createElement('div');
-            loading.id = 'loading-indicator';
-            loading.classList.add('loading-dots');
-            for (let i = 0; i < 3; i++) {
-                const dot = document.createElement('div');
-                dot.classList.add('dot');
-                loading.appendChild(dot);
-            }
-            messagesList.appendChild(loading);
-            messagesList.scrollTop = messagesList.scrollHeight;
-        }
-
-        hideLoadingIndicator() {
-            const loading = document.getElementById('loading-indicator');
-            if (loading) loading.remove();
-        }
-
-        speak(text) {
-            if (!this.speechSynth || !this.vrm?.expressionManager) return;
-
-            if (this.currentUtterance) {
-                this.speechSynth.cancel();
-            }
-
-            this.currentUtterance = new SpeechSynthesisUtterance(text);
-            this.currentUtterance.volume = 1.0;
-            this.currentUtterance.rate = 1.0;
-            this.currentUtterance.pitch = 1.2;
-            this.currentUtterance.lang = 'ru-RU';
-            this.currentUtterance.onstart = () => this.startLipSync();
-            this.currentUtterance.onend = () => {
-                this.stopLipSync();
-                this.currentUtterance = null;
-            };
-            this.currentUtterance.onboundary = (event) => {
-                if (event.name === 'word') {
-                    this.vrm.expressionManager.setValue('happy', Math.random() * 0.3 + 0.5);
+                if (this.model && this.currentExpression === 'neutral') {
+                    this.model.expression('F00');
                 }
-            };
-            this.currentUtterance.onerror = (err) => console.error('Speech error', err);
-
-            this.speechSynth.speak(this.currentUtterance);
-        }
-
-        startLipSync() {
-            if (this.lipSyncInterval) return;
-            this.lipSyncInterval = setInterval(() => {
-                const value = Math.sin(Date.now() / 100) * 0.4 + 0.5;
-                this.vrm.expressionManager.setValue('aa', value);
-                this.vrm.expressionManager.setValue('ih', value * 0.7);
-                this.vrm.expressionManager.setValue('oh', value * 0.5);
-            }, 50);
-        }
-
-        stopLipSync() {
-            if (this.lipSyncInterval) {
-                clearInterval(this.lipSyncInterval);
-                this.lipSyncInterval = null;
-            }
-            this.vrm.expressionManager.setValue('aa', 0);
-            this.vrm.expressionManager.setValue('ih', 0);
-            this.vrm.expressionManager.setValue('oh', 0);
-        }
-
-        updateLookTarget() {
-            this.raycaster.setFromCamera(this.pointerPosition, this.camera);
-            this.raycaster.ray.intersectPlane(this.plane, this.intersectPoint);
-            this.lookTarget.position.copy(this.intersectPoint);
-        }
-
-        startRenderLoop() {
-            if (this.animationId || this.isDestroyed) return;
-
-            const animate = (time) => {
-                this.animationId = requestAnimationFrame(animate);
-                const delta = this.clock.getDelta();
-
-                if (this.controls) this.controls.update();
-
-                if (this.vrm) {
-                    if (Date.now() - this.lastInteractionTime > 500) {
-                        this.lookTarget.position.lerp(this.camera.position, 0.02);
-                    }
-                    if (this.vrm.lookAt) {
-                        this.vrm.lookAt.target = this.lookTarget;
-                    }
-
-                    this.blinkTimer += delta;
-                    if (this.blinkTimer > 3 + Math.random() * 2) {
-                        this.vrm.expressionManager.setValue('blink', 1);
-                        setTimeout(() => this.vrm.expressionManager.setValue('blink', 0), 200 + Math.random() * 100);
-                        this.blinkTimer = 0;
-                    }
-
-                    this.vrm.update(delta);
-                }
-
-                if (this.mixer) this.mixer.update(delta);
-
-                this.renderer.render(this.scene, this.camera);
-            };
-
-            animate();
-        }
-
-        triggerHaptic(type = 'success') {
-            const wa = window.Telegram?.WebApp;
-            if (wa?.HapticFeedback) wa.HapticFeedback.notificationOccurred(type);
-        }
-
-        handleFatalError(error) {
-            console.error('Fatal error:', error);
-            this.triggerHaptic('error');
-            const wa = window.Telegram?.WebApp;
-            const msg = `Ошибка: ${error.message || error}`;
-            if (wa) {
-                wa.showAlert(msg, () => wa.close());
-            } else {
-                alert(msg);
-            }
-            this.destroy();
-        }
-
-        destroy() {
-            this.isDestroyed = true;
-            if (this.animationId) cancelAnimationFrame(this.animationId);
-            if (this.mixer) {
-                this.mixer.stopAllAction();
-                this.mixer = null;
-            }
-            if (this.controls) this.controls.dispose();
-            if (this.vrm) {
-                this.scene.remove(this.vrm.scene);
-                this.vrm = null;
-            }
-            if (this.renderer) {
-                this.renderer.dispose();
-                if (this.renderer.forceContextLoss) this.renderer.forceContextLoss();
-                this.renderer.domElement.remove();
-                this.renderer = null;
-            }
-            if (this.speechSynth && this.currentUtterance) {
-                this.speechSynth.cancel();
-            }
-            this.scene = null;
-            this.camera = null;
-            this.clock = null;
-            if (this.lipSyncInterval) clearInterval(this.lipSyncInterval);
-            if (this.recognition) this.recognition.stop();
-            this.stopVolumeAnalysis();
-            if (this.lookTarget) this.scene.remove(this.lookTarget);
-            if (this.speechTimeout) clearTimeout(this.speechTimeout);
+            }, 120);
+        } catch (error) {
         }
     }
 
-    let viewerInstance = null;
-    const initialize = () => {
-        if (viewerInstance) return;
-        viewerInstance = new CompanionViewer();
-    };
+    triggerGlance() {
+        this.eyeTarget.x = (Math.random() - 0.5) * 2;
+        this.eyeTarget.y = (Math.random() - 0.5) * 2;
+    }
+}
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initialize, { once: true });
-    } else {
-        initialize();
+class VoiceService {
+    constructor() {
+        this.audioContext = null;
+        this.recognition = null;
+        this.initSpeechRecognition();
     }
 
-    window.addEventListener('beforeunload', () => {
-        if (viewerInstance) viewerInstance.destroy();
-    }, { once: true });
+    initSpeechRecognition() {
+        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+            const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            this.recognition = new Recognition();
+            this.recognition.continuous = false;
+            this.recognition.interimResults = false;
+            this.recognition.lang = 'ru-RU';
+            this.recognition.maxAlternatives = 1;
+        }
+    }
+
+    async recognizeSpeech(audioData) {
+        if (!this.recognition) {
+            throw new Error('Speech recognition not available');
+        }
+
+        return new Promise((resolve, reject) => {
+            this.recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                resolve(transcript);
+            };
+
+            this.recognition.onerror = (event) => {
+                reject(new Error(event.error));
+            };
+
+            this.recognition.onend = () => {
+            };
+
+            this.recognition.start();
+        });
+    }
+
+    async synthesizeSpeech(text) {
+        if (!window.speechSynthesis) {
+            throw new Error('Speech synthesis not available');
+        }
+
+        return new Promise((resolve, reject) => {
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'ru-RU';
+            utterance.rate = 1.0;
+            utterance.pitch = 1.0;
+            utterance.volume = 1.0;
+
+            utterance.onend = () => {
+                resolve();
+            };
+
+            utterance.onerror = (event) => {
+                reject(new Error(event.error));
+            };
+
+            window.speechSynthesis.speak(utterance);
+        });
+    }
+
+    async playAudio(audioBuffer, onVolume) {
+        if (!this.audioContext) {
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
+        const source = this.audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+
+        const analyser = this.audioContext.createAnalyser();
+        analyser.fftSize = 256;
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+        source.connect(analyser);
+        analyser.connect(this.audioContext.destination);
+
+        const updateVolume = () => {
+            analyser.getByteFrequencyData(dataArray);
+            const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+            const volume = average / 255;
+            onVolume(volume);
+            requestAnimationFrame(updateVolume);
+        };
+
+        source.start();
+        updateVolume();
+
+        return new Promise((resolve) => {
+            source.onended = () => {
+                resolve();
+            };
+        });
+    }
+}
+
+class InteractionHandler {
+    static instance = null;
+
+    static getInstance() {
+        if (!InteractionHandler.instance) {
+            InteractionHandler.instance = new InteractionHandler();
+        }
+        return InteractionHandler.instance;
+    }
+
+    constructor() {
+        this.cursorPosition = { x: 0, y: 0 };
+        this.isDragging = false;
+        this.dragStart = { x: 0, y: 0 };
+        this.setupListeners();
+    }
+
+    setupListeners() {
+        const container = document.getElementById('avatar-container');
+        
+        container.addEventListener('mousedown', this.handlePointerStart.bind(this));
+        container.addEventListener('touchstart', this.handlePointerStart.bind(this), { passive: true });
+        
+        container.addEventListener('mousemove', this.handlePointerMove.bind(this));
+        container.addEventListener('touchmove', this.handlePointerMove.bind(this), { passive: false });
+        
+        container.addEventListener('mouseup', this.handlePointerEnd.bind(this));
+        container.addEventListener('touchend', this.handlePointerEnd.bind(this));
+        
+        container.addEventListener('contextmenu', (e) => e.preventDefault());
+    }
+
+    handlePointerStart(event) {
+        this.isDragging = true;
+        const point = this.getEventPoint(event);
+        this.dragStart = { x: point.x, y: point.y };
+        
+        const model = AiriSystem.getInstance().live2dModel;
+        if (model) {
+            this.dragStart.x -= model.position.x;
+            this.dragStart.y -= model.position.y;
+        }
+        
+        AiriSystem.getInstance().avatarManager.setEmotion('surprised');
+    }
+
+    handlePointerMove(event) {
+        const point = this.getEventPoint(event);
+        this.cursorPosition = this.normalizePoint(point);
+        
+        if (this.isDragging) {
+            event.preventDefault();
+            const model = AiriSystem.getInstance().live2dModel;
+            if (model) {
+                model.position.set(
+                    point.x - this.dragStart.x,
+                    point.y - this.dragStart.y
+                );
+            }
+        }
+    }
+
+    handlePointerEnd(event) {
+        if (!this.isDragging) {
+            const point = this.getEventPoint(event);
+            AiriSystem.getInstance().processVoiceCommand();
+            AiriSystem.getInstance().avatarManager.setEmotion('happy');
+        }
+        this.isDragging = false;
+    }
+
+    getEventPoint(event) {
+        if (event.type.includes('touch')) {
+            const touch = event.touches[0] || event.changedTouches[0];
+            return {
+                x: touch.clientX * window.devicePixelRatio,
+                y: touch.clientY * window.devicePixelRatio
+            };
+        }
+        return {
+            x: event.clientX * window.devicePixelRatio,
+            y: event.clientY * window.devicePixelRatio
+        };
+    }
+
+    normalizePoint(point) {
+        const width = window.innerWidth * window.devicePixelRatio;
+        const height = window.innerHeight * window.devicePixelRatio;
+        
+        return {
+            x: (point.x / width) * 2 - 1,
+            y: 1 - (point.y / height) * 2
+        };
+    }
+
+    getNormalizedCursor() {
+        return this.cursorPosition;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    AiriSystem.getInstance();
+});
+
+window.AiriSystem = AiriSystem;
 </script>
 </body>
 </html>
