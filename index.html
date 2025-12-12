@@ -149,7 +149,7 @@
             try {
                 gltf = await loader.loadAsync(modelUrl);
             } catch (e) {
-                const fallbackUrl = 'https://raw.githubusercontent.com/vrm-c/UniVRM/master/Tests/Models/Alicia_vrm-0.51/AliciaSolid_vrm-0.51.vrm';
+                const fallbackUrl = 'https://raw.githubusercontent.com/mrxz/vrm-sample-models/master/human_male/human_male.vrm';
                 gltf = await loader.loadAsync(fallbackUrl);
             }
             const vrm = gltf.userData.vrm;
