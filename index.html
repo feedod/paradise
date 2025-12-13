@@ -25,12 +25,14 @@
     {
       "imports": {
         "pixi.js": "https://esm.sh/pixi.js@7.4.0",
-        "pixi-live2d-display": "https://esm.sh/pixi-live2d-display@0.5.0-beta/cubism4"
+        "pixi-live2d-display": "https://esm.sh/pixi-live2d-display@0.5.0-beta",
+        "annyang": "https://esm.sh/annyang@2.0.0"
       }
     }
   </script>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/speak-tts@3.2.1/lib/speak-tts.min.js"></script>
 </head>
 <body>
   <canvas id="canvas"></canvas>
@@ -38,9 +40,14 @@
   <script type="module">
     import { Application } from 'pixi.js';
     import { Live2DModel } from 'pixi-live2d-display';
+    import annyang from 'annyang';
 
     (async function main() {
       'use strict';
+
+      let model;
+      let speechTts;
+      let mouthAnimationInterval = null;
 
       try {
         if (window.Telegram?.WebApp) {
@@ -49,6 +56,7 @@
           Telegram.WebApp.setHeaderColor('#000000');
           Telegram.WebApp.setBackgroundColor('#000000');
           Telegram.WebApp.disableVerticalSwipes();
+          Telegram.WebApp.enableClosingConfirmation();
         }
 
         const canvas = document.getElementById('canvas');
@@ -60,157 +68,201 @@
           resolution: window.devicePixelRatio || 1,
           autoDensity: true,
           antialias: true,
-          powerPreference: 'high-performance'
+          powerPreference: 'high-performance',
+          sharedTicker: true
         });
 
-        const modelUrl = 'https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display/test/assets/haru/haru_greeter_t03.model3.json';
-        const model = await Live2DModel.from(modelUrl, { autoUpdate: true });
+        const live2dModelUrl = 'https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display/test/assets/haru/haru_greeter_t03.model3.json';
+        model = await Live2DModel.from(live2dModelUrl, {
+          autoUpdate: true
+        });
 
         app.stage.addChild(model);
+        app.stage.interactive = true;
+        model.interactive = true;
 
         model.anchor.set(0.5);
-        model.position.set(app.renderer.width / 2, app.renderer.height / 2);
-        const updateScale = () => {
+        const updateTransform = () => {
+          model.position.set(app.renderer.width / 2, app.renderer.height / 2);
           const scale = Math.min(
-            app.renderer.width / model.width,
-            app.renderer.height / model.height
-          ) * 0.8;
+            (app.renderer.width * 0.9) / model.width,
+            (app.renderer.height * 0.9) / model.height
+          );
           model.scale.set(scale);
         };
-        updateScale();
+        updateTransform();
 
-        const resizeHandler = () => {
-          model.position.set(app.renderer.width / 2, app.renderer.height / 2);
-          updateScale();
-        };
+        const resizeHandler = () => updateTransform();
         window.addEventListener('resize', resizeHandler, { passive: true });
-        window.addEventListener('orientationchange', resizeHandler, { passive: true });
+        window.addEventListener('orientationchange', () => setTimeout(resizeHandler, 0));
 
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        const speechSynthesis = window.speechSynthesis;
-
-        if (SpeechRecognition && speechSynthesis) {
-          const recognition = new SpeechRecognition();
-          recognition.continuous = false;
-          recognition.interimResults = false;
-          recognition.lang = 'en-US';
-
-          let mouthAnimationInterval = null;
-
-          const animateMouth = () => {
-            if (mouthAnimationInterval) clearInterval(mouthAnimationInterval);
-            mouthAnimationInterval = setInterval(() => {
-              const value = Math.random() * 0.8 + 0.2;
-              model.internalModel?.coreModel?.setParameterValueById('PARAM_MOUTH_OPEN_Y', value);
-            }, 50);
-          };
-
-          const stopMouthAnimation = () => {
-            if (mouthAnimationInterval) {
-              clearInterval(mouthAnimationInterval);
-              mouthAnimationInterval = null;
+        model.on('hit', (hitAreas) => {
+          if (hitAreas.includes('Body')) {
+            model.motion('tap_body');
+            if (window.Telegram?.WebApp) {
+              Telegram.WebApp.HapticFeedback.impactOccurred('light');
             }
-            model.internalModel?.coreModel?.setParameterValueById('PARAM_MOUTH_OPEN_Y', 0);
-          };
+          }
+        });
 
-          const getAIResponse = async (userInput) => {
-            const apiKey = 'YOUR_XAI_API_KEY_HERE';
-            if (apiKey === 'YOUR_XAI_API_KEY_HERE') {
-              return 'Hello! I am Airi. To use me fully, please replace the API key.';
-            }
-            const endpoint = 'https://api.x.ai/v1/chat/completions';
+        model.motion('idle');
 
-            const response = await fetch(endpoint, {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                model: 'grok-4-0709',
-                messages: [
-                  {
-                    role: 'system',
-                    content: 'You are Airi, a lively and unique AI companion with a contrasting color palette of pink and blue. You are helpful, fun, and engaging in conversations.'
-                  },
-                  {
-                    role: 'user',
-                    content: userInput
-                  }
-                ],
-                temperature: 0.7,
-                max_tokens: 256
-              })
-            });
+        speechTts = new Speech();
+        await speechTts.init({
+          lang: 'en-us',
+          volume: 0.9,
+          rate: 1.1,
+          pitch: 1.3,
+          splitSentences: false
+        });
 
-            if (!response.ok) {
-              throw new Error(`API request failed with status ${response.status}`);
-            }
-
-            const data = await response.json();
-            return data.choices[0].message.content.trim();
-          };
-
-          recognition.onresult = async (event) => {
-            const userText = event.results[0][0].transcript.trim();
-            if (userText) {
-              try {
-                await model.motion('tap_body');
-
-                const aiResponse = await getAIResponse(userText);
-
-                const utterance = new SpeechSynthesisUtterance(aiResponse);
-                utterance.lang = 'en-US';
-                utterance.volume = 1;
-                utterance.rate = 1;
-                utterance.pitch = 1.2;
-
-                utterance.onstart = () => {
-                  animateMouth();
-                  model.startRandomIdleMotion();
-                };
-
-                utterance.onend = () => {
-                  stopMouthAnimation();
-                  setTimeout(() => recognition.start(), 500);
-                };
-
-                utterance.onerror = (err) => {
-                  console.error('Speech synthesis error:', err);
-                  stopMouthAnimation();
-                  setTimeout(() => recognition.start(), 500);
-                };
-
-                speechSynthesis.speak(utterance);
-              } catch (error) {
-                console.error('Processing error:', error);
-                setTimeout(() => recognition.start(), 500);
+        if (annyang) {
+          annyang.setLanguage('en-US');
+          annyang.addCallback('result', (userSaid) => {
+            if (userSaid && userSaid.length > 0) {
+              const userText = userSaid[0].trim();
+              if (userText) {
+                processSpeech(userText);
               }
-            } else {
-              setTimeout(() => recognition.start(), 500);
             }
-          };
+          });
 
-          recognition.onerror = (event) => {
-            console.warn('Speech recognition error:', event.error);
-            if (event.error !== 'aborted') {
-              setTimeout(() => recognition.start(), 500);
+          annyang.addCallback('error', (error) => {
+            console.warn('Annyang error:', error);
+          });
+
+          annyang.addCallback('end', () => {
+            if (!speechTts.speaking) {
+              annyang.start({ continuous: true, autoRestart: true });
             }
-          };
+          });
 
-          recognition.onend = () => {
-            if (!speechSynthesis.speaking) {
-              setTimeout(() => recognition.start(), 500);
-            }
-          };
-
-          setTimeout(() => recognition.start(), 1000);
+          setTimeout(() => {
+            annyang.start({ continuous: true, autoRestart: true });
+          }, 1000);
         } else {
-          console.warn('Speech APIs not supported in this browser.');
+          console.warn('Annyang not supported in this browser.');
         }
+
+        const animateMouth = () => {
+          if (mouthAnimationInterval) clearInterval(mouthAnimationInterval);
+          mouthAnimationInterval = setInterval(() => {
+            const value = Math.sin(Date.now() / 100) * 0.4 + 0.3;
+            model.internalModel?.coreModel?.setParameterValueById('PARAM_MOUTH_OPEN_Y', Math.abs(value));
+          }, 100);
+        };
+
+        const stopMouthAnimation = () => {
+          if (mouthAnimationInterval) {
+            clearInterval(mouthAnimationInterval);
+            mouthAnimationInterval = null;
+          }
+          model.internalModel?.coreModel?.setParameterValueById('PARAM_MOUTH_OPEN_Y', 0);
+        };
+
+        const getAIResponse = async (userInput) => {
+          const apiKey = 'YOUR_XAI_API_KEY_HERE';
+          if (apiKey === 'YOUR_XAI_API_KEY_HERE') {
+            return 'Hello! I am Airi. To use me fully, please replace the API key.';
+          }
+          const endpoint = 'https://api.x.ai/v1/chat/completions';
+
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+          const response = await fetch(endpoint, {
+            method: 'POST',
+            signal: controller.signal,
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              model: 'grok-4-0709',
+              messages: [
+                {
+                  role: 'system',
+                  content: 'You are Airi, a lively and unique AI companion. Keep responses concise and engaging, under 100 words.'
+                },
+                {
+                  role: 'user',
+                  content: userInput
+                }
+              ],
+              temperature: 0.8,
+              max_tokens: 150,
+              stream: false
+            })
+          });
+
+          clearTimeout(timeoutId);
+
+          if (!response.ok) {
+            throw new Error(`API error: ${response.statusText}`);
+          }
+
+          const data = await response.json();
+          return data.choices[0]?.message?.content?.trim() || 'Sorry, I could not process that.';
+        };
+
+        const processSpeech = async (userText) => {
+          if (!userText) return;
+
+          try {
+            model.motion('tap_body');
+
+            const aiResponse = await getAIResponse(userText);
+            speechTts.speak({
+              text: aiResponse,
+              queue: false,
+              listeners: {
+                onstart: () => {
+                  animateMouth();
+                  model.motion('idle');
+                },
+                onend: () => {
+                  stopMouthAnimation();
+                  if (annyang && !annyang.isListening()) {
+                    annyang.start({ continuous: true, autoRestart: true });
+                  }
+                }
+              }
+            });
+          } catch (error) {
+            console.error('AI processing error:', error);
+            const fallback = 'Oops, something went wrong. Let\'s try again!';
+            speechTts.speak({
+              text: fallback,
+              listeners: {
+                onend: () => {
+                  stopMouthAnimation();
+                  if (annyang && !annyang.isListening()) {
+                    annyang.start({ continuous: true, autoRestart: true });
+                  }
+                }
+              }
+            });
+          }
+        };
+
+        setInterval(() => {
+          if (!speechTts.speaking && model) {
+            model.motion('idle');
+          }
+        }, 5000);
+
       } catch (error) {
-        console.error('Application initialization error:', error);
+        console.error('Initialization failed:', error);
+        if (window.Telegram?.WebApp) {
+          Telegram.WebApp.showAlert('Failed to load Airi. Please refresh.');
+        }
       }
+
+      window.addEventListener('beforeunload', () => {
+        if (annyang) {
+          annyang.abort();
+        }
+      });
     })();
   </script>
 </body>
