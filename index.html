@@ -3,7 +3,6 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Paradise</title>
   <style>
     body {
       margin: 0;
@@ -16,12 +15,58 @@
       overflow: hidden;
       touch-action: none;
       font-family: system-ui, -apple-system, sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
     }
     #canvas {
       width: 100%;
       height: 100%;
       touch-action: none;
       display: block;
+    }
+    #telegram-prompt {
+      display: none;
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #ffffff;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 2rem;
+      box-sizing: border-box;
+      z-index: 1000;
+    }
+    #telegram-prompt h1 {
+      font-size: clamp(1.5rem, 5vw, 3rem);
+      margin: 0 0 1rem 0;
+      text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+    }
+    #telegram-prompt p {
+      font-size: clamp(1rem, 3vw, 1.2rem);
+      margin: 0 0 2rem 0;
+      opacity: 0.9;
+    }
+    #telegram-prompt button {
+      background: rgba(255, 255, 255, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      color: #ffffff;
+      padding: 1rem 2rem;
+      border-radius: 50px;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      backdrop-filter: blur(10px);
+    }
+    #telegram-prompt button:hover {
+      background: rgba(255, 255, 255, 0.3);
+      transform: scale(1.05);
     }
   </style>
   <script src="https://telegram.org/js/telegram-web-app.js" crossorigin="anonymous"></script>
@@ -30,6 +75,11 @@
 </head>
 <body>
   <canvas id="canvas" aria-hidden="true"></canvas>
+  <div id="telegram-prompt">
+    <h1>🌟 Paradise Awaits 🌟</h1>
+    <p>Open this experience in Telegram to interact with your AI companion.</p>
+    <button onclick="window.location.href='https://t.me/your_bot_username'">Open in Telegram</button>
+  </div>
 
   <script type="module">
     'use strict';
@@ -38,46 +88,57 @@
     import { Live2DModel } from 'https://esm.sh/pixi-live2d-display@0.4.0';
 
     class Paradise {
-      constructor() {
-        this.model = null;
-        this.recognition = null;
-        this.mouthAnimationInterval = null;
-        this.conversationHistory = [];
-        this.isSpeaking = false;
-        this.isListening = false;
-        this.app = null;
+      #model = null;
+      #recognition = null;
+      #mouthAnimationInterval = null;
+      #conversationHistory = [];
+      #isSpeaking = false;
+      #isListening = false;
+      #app = null;
+      #isTelegram = false;
 
-        this.init();
+      constructor() {
+        this.#checkEnvironment();
+        if (!this.#isTelegram) {
+          this.#showTelegramPrompt();
+          return;
+        }
+        this.#init();
       }
 
-      async init() {
+      #checkEnvironment() {
+        this.#isTelegram = !!window.Telegram?.WebApp;
+      }
+
+      #showTelegramPrompt() {
+        document.getElementById('telegram-prompt').style.display = 'flex';
+      }
+
+      async #init() {
         try {
-          this.setupTelegram();
-          this.app = await this.setupPixi();
-          this.model = await this.loadModel();
-          this.setupModel();
-          this.setupStt();
-          this.startIdleLoop();
-          this.setupCleanup();
+          this.#setupTelegram();
+          this.#app = await this.#setupPixi();
+          await this.#loadAndSetupModel();
+          this.#setupStt();
+          this.#startIdleLoop();
+          this.#setupCleanup();
         } catch (error) {
           console.error('Paradise initialization failed:', error);
-          this.showError('Failed to load Paradise. Please refresh the app.');
+          this.#showError('Failed to load Paradise. Please refresh the app.');
         }
       }
 
-      setupTelegram() {
-        const { WebApp } = window.Telegram ?? {};
-        if (WebApp) {
-          WebApp.ready();
-          WebApp.expand();
-          WebApp.setHeaderColor('#000000');
-          WebApp.setBackgroundColor('#000000');
-          WebApp.disableVerticalSwipes();
-          WebApp.enableClosingConfirmation();
-        }
+      #setupTelegram() {
+        const { WebApp } = window.Telegram;
+        WebApp.ready();
+        WebApp.expand();
+        WebApp.setHeaderColor('#000000');
+        WebApp.setBackgroundColor('#000000');
+        WebApp.disableVerticalSwipes();
+        WebApp.enableClosingConfirmation();
       }
 
-      async setupPixi() {
+      async #setupPixi() {
         const canvas = document.getElementById('canvas');
         const app = new Application({
           view: canvas,
@@ -91,142 +152,186 @@
           sharedTicker: false
         });
 
-        window.addEventListener('resize', this.handleResize.bind(this), { passive: true });
-        window.addEventListener('orientationchange', () => setTimeout(this.handleResize.bind(this), 0));
+        window.addEventListener('resize', this.#handleResize.bind(this), { passive: true });
+        window.addEventListener('orientationchange', () => setTimeout(this.#handleResize.bind(this), 0));
 
         return app;
       }
 
-      async loadModel() {
-        const modelUrl = 'https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display/test/assets/haru/haru_greeter_t03.model3.json';
-        const model = await Live2DModel.from(modelUrl, {
-          autoUpdate: true
-        });
+      async #loadAndSetupModel() {
+        try {
+          const modelUrl = 'https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display/test/assets/haru/haru_greeter_t03.model3.json';
+          this.#model = await Live2DModel.from(modelUrl, { autoUpdate: true });
 
-        model.alpha = 1;
-        model.visible = true;
-        this.app.stage.addChild(model);
-        this.app.stage.interactive = true;
-        model.interactive = true;
+          this.#model.alpha = 1;
+          this.#model.visible = true;
+          this.#app.stage.addChild(this.#model);
+          this.#app.stage.interactive = true;
+          this.#model.interactive = true;
 
-        console.log('Model loaded and added to stage');
+          console.log('Model loaded and added to stage');
 
-        return model;
+          this.#setupModelInteractions();
+          this.#updateTransform();
+          this.#startRandomIdle();
+          this.#setupEyeBlink();
+        } catch (error) {
+          console.error('Model loading failed:', error);
+          this.#showError('Model failed to load. Falling back to static mode.');
+          this.#renderFallback();
+        }
       }
 
-      setupModel() {
-        this.model.anchor.set(0.5);
-        this.updateTransform();
-
-        this.model.on('hit', (hitAreas) => {
+      #setupModelInteractions() {
+        this.#model.on('hit', (hitAreas) => {
           if (hitAreas.includes('Body')) {
-            this.model.internalModel.motionManager.startRandomMotion('tap_body');
-            this.hapticFeedback();
+            this.#triggerTapMotion();
+            this.#hapticFeedback();
           }
         });
-
-        this.model.internalModel.motionManager.startRandomMotion('idle');
       }
 
-      updateTransform() {
-        if (!this.model || !this.app) return;
-        this.model.position.set(this.app.renderer.width / 2, this.app.renderer.height / 2);
+      #triggerTapMotion() {
+        if (this.#model?.internalModel?.motionManager) {
+          this.#model.internalModel.motionManager.startRandomMotion('Tap');
+        }
+      }
+
+      #updateTransform() {
+        if (!this.#model || !this.#app) return;
+        this.#model.position.set(this.#app.renderer.width / 2, this.#app.renderer.height / 2);
         const scale = Math.min(
-          (this.app.renderer.width * 0.9) / this.model.width,
-          (this.app.renderer.height * 0.9) / this.model.height
+          (this.#app.renderer.width * 0.9) / this.#model.width,
+          (this.#app.renderer.height * 0.9) / this.#model.height
         );
-        this.model.scale.set(scale);
+        this.#model.scale.set(scale);
       }
 
-      handleResize() {
-        this.updateTransform();
+      #handleResize() {
+        this.#updateTransform();
       }
 
-      setupStt() {
+      #startRandomIdle() {
+        if (this.#model?.internalModel?.motionManager) {
+          this.#model.internalModel.motionManager.startRandomMotion('Idle');
+        }
+      }
+
+      #setupEyeBlink() {
+        if (!this.#model?.internalModel?.coreModel) return;
+        const coreModel = this.#model.internalModel.coreModel;
+        setInterval(() => {
+          if (!this.#isSpeaking) {
+            const blinkValue = Math.random() < 0.1 ? 0 : 1;
+            coreModel.setParameterValueById('ParamEyeLOpen', blinkValue);
+            coreModel.setParameterValueById('ParamEyeROpen', blinkValue);
+          }
+        }, 3000);
+      }
+
+      #setupStt() {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) {
           console.warn('Speech Recognition not supported');
           return;
         }
 
-        this.recognition = new SpeechRecognition();
-        this.recognition.continuous = false;
-        this.recognition.interimResults = false;
-        this.recognition.lang = 'en-US';
+        this.#recognition = new SpeechRecognition();
+        this.#recognition.continuous = false;
+        this.#recognition.interimResults = false;
+        this.#recognition.lang = 'en-US';
 
-        this.recognition.onresult = this.handleSpeechResult.bind(this);
-        this.recognition.onerror = this.handleSttError.bind(this);
-        this.recognition.onend = this.handleSttEnd.bind(this);
+        this.#recognition.onresult = this.#handleSpeechResult.bind(this);
+        this.#recognition.onerror = this.#handleSttError.bind(this);
+        this.#recognition.onend = this.#handleSttEnd.bind(this);
 
-        setTimeout(() => {
-          this.startListening();
-        }, 1500);
+        setTimeout(() => this.#startListening(), 1500);
       }
 
-      startListening() {
-        if (this.recognition && !this.isListening && !this.isSpeaking) {
-          this.recognition.start();
-          this.isListening = true;
-        }
-      }
-
-      stopListening() {
-        if (this.recognition && this.isListening) {
-          this.recognition.stop();
-          this.isListening = false;
-        }
-      }
-
-      handleSpeechResult(event) {
-        const userText = event.results[0][0].transcript.trim();
-        if (userText) {
-          this.processInput(userText);
-        }
-      }
-
-      handleSttError(event) {
-        console.warn('STT error:', event.error);
-        this.isListening = false;
-      }
-
-      handleSttEnd() {
-        this.isListening = false;
-        if (!this.isSpeaking) {
-          setTimeout(() => this.startListening(), 500);
-        }
-      }
-
-      async processInput(userText) {
-        this.stopListening();
-        this.conversationHistory.push({ role: 'user', content: userText });
-
-        try {
-          this.model.internalModel.motionManager.startRandomMotion('tap_body');
-
-          const aiResponse = await this.getAIResponse(userText);
-          this.conversationHistory.push({ role: 'assistant', content: aiResponse });
-
-          this.setRandomExpression();
-          await this.speak(aiResponse);
-        } catch (error) {
-          console.error('Processing error:', error);
-          this.speak('Oops, something went wrong. Let\'s try again!');
-        } finally {
-          if (!this.isSpeaking) {
-            setTimeout(() => this.startListening(), 1000);
+      #startListening() {
+        if (this.#recognition && !this.#isListening && !this.#isSpeaking) {
+          try {
+            this.#recognition.start();
+            this.#isListening = true;
+          } catch (error) {
+            console.error('STT start failed:', error);
+            setTimeout(() => this.#startListening(), 1000);
           }
         }
       }
 
-      async getAIResponse(userInput) {
+      #stopListening() {
+        if (this.#recognition && this.#isListening) {
+          try {
+            this.#recognition.stop();
+          } catch (error) {
+            console.error('STT stop failed:', error);
+          }
+          this.#isListening = false;
+        }
+      }
+
+      #handleSpeechResult(event) {
+        try {
+          const userText = Array.from(event.results)
+            .map(result => result[0].transcript)
+            .join('')
+            .trim();
+          if (userText) {
+            this.#processInput(userText);
+          }
+        } catch (error) {
+          console.error('Speech result processing failed:', error);
+        }
+      }
+
+      #handleSttError(event) {
+        console.warn('STT error:', event.error);
+        this.#isListening = false;
+        if (event.error !== 'aborted') {
+          setTimeout(() => this.#startListening(), 1000);
+        }
+      }
+
+      #handleSttEnd() {
+        this.#isListening = false;
+        if (!this.#isSpeaking) {
+          setTimeout(() => this.#startListening(), 500);
+        }
+      }
+
+      async #processInput(userText) {
+        this.#stopListening();
+        this.#conversationHistory.push({ role: 'user', content: userText });
+
+        try {
+          this.#triggerEmotion('surprise');
+          const aiResponse = await this.#getAIResponse(userText);
+          this.#conversationHistory.push({ role: 'assistant', content: aiResponse });
+
+          const emotion = this.#detectEmotion(aiResponse);
+          this.#triggerEmotion(emotion);
+          await this.#speak(aiResponse);
+        } catch (error) {
+          console.error('Input processing failed:', error);
+          this.#triggerEmotion('sad');
+          await this.#speak('Oops, something went wrong. Let\'s try again!');
+        } finally {
+          if (!this.#isSpeaking) {
+            setTimeout(() => this.#startListening(), 1000);
+          }
+        }
+      }
+
+      async #getAIResponse(userInput) {
         if (typeof puter === 'undefined' || !puter.ai) {
           throw new Error('Puter.js not loaded');
         }
 
-        const systemPrompt = 'You are Paradise, a lively and unique AI companion with pink and blue aesthetics. Keep responses concise, fun, and under 100 words.';
+        const systemPrompt = 'You are Paradise, a lively and unique AI companion with pink and blue aesthetics. Keep responses concise, fun, and under 100 words. End with an emoji.';
         const messages = [
           { role: 'system', content: systemPrompt },
-          ...this.conversationHistory.slice(-5)
+          ...this.#conversationHistory.slice(-4)
         ];
 
         const response = await puter.ai.chat(messages, {
@@ -235,12 +340,67 @@
           max_tokens: 150
         });
 
-        return response.message.content.trim() || 'Sorry, I could not process that.';
+        return response.message.content.trim();
       }
 
-      async speak(text) {
-        this.isSpeaking = true;
-        this.animateMouth();
+      #detectEmotion(text) {
+        const lowerText = text.toLowerCase();
+        if (lowerText.includes('happy') || lowerText.includes('fun') || lowerText.includes('great')) return 'happy';
+        if (lowerText.includes('sad') || lowerText.includes('sorry') || lowerText.includes('oops')) return 'sad';
+        if (lowerText.includes('laugh') || lowerText.includes('haha')) return 'laugh';
+        return 'neutral';
+      }
+
+      #triggerEmotion(emotion) {
+        if (!this.#model?.internalModel) return;
+
+        const expressions = {
+          happy: 'f01',
+          sad: 'f03',
+          laugh: 'f02',
+          surprise: 'f04',
+          neutral: 'f00'
+        };
+        const expr = expressions[emotion] || 'f00';
+        this.#model.expression(expr);
+
+        switch (emotion) {
+          case 'laugh':
+            this.#animateLaughter();
+            break;
+          case 'sad':
+            this.#animateSad();
+            break;
+          default:
+            this.#startRandomIdle();
+        }
+      }
+
+      #animateLaughter() {
+        if (this.#model?.internalModel?.coreModel) {
+          const coreModel = this.#model.internalModel.coreModel;
+          let laughCount = 0;
+          const laughInterval = setInterval(() => {
+            const mouthValue = Math.sin(Date.now() / 200) * 0.5 + 0.5;
+            coreModel.setParameterValueById('PARAM_MOUTH_OPEN_Y', Math.abs(mouthValue));
+            laughCount++;
+            if (laughCount > 10) {
+              clearInterval(laughInterval);
+              coreModel.setParameterValueById('PARAM_MOUTH_OPEN_Y', 0);
+            }
+          }, 150);
+        }
+      }
+
+      #animateSad() {
+        if (this.#model?.internalModel?.motionManager) {
+          this.#model.internalModel.motionManager.startRandomMotion('Idle');
+        }
+      }
+
+      async #speak(text) {
+        this.#isSpeaking = true;
+        this.#animateMouth();
 
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = 'en-US';
@@ -249,67 +409,64 @@
         utterance.pitch = 1.3;
 
         utterance.onstart = () => {
-          this.model.internalModel.motionManager.startRandomMotion('idle');
+          this.#startRandomIdle();
         };
 
         utterance.onend = () => {
-          this.stopMouthAnimation();
-          this.isSpeaking = false;
-          this.setRandomExpression();
-          setTimeout(() => this.startListening(), 500);
+          this.#stopMouthAnimation();
+          this.#isSpeaking = false;
+          this.#triggerEmotion('neutral');
+          setTimeout(() => this.#startListening(), 500);
         };
 
         utterance.onerror = (error) => {
           console.error('TTS error:', error);
-          this.stopMouthAnimation();
-          this.isSpeaking = false;
-          setTimeout(() => this.startListening(), 500);
+          this.#stopMouthAnimation();
+          this.#isSpeaking = false;
+          setTimeout(() => this.#startListening(), 500);
         };
 
         window.speechSynthesis.cancel();
         window.speechSynthesis.speak(utterance);
       }
 
-      setRandomExpression() {
-        if (!this.model) return;
-        const expressions = ['f00', 'f01', 'f02', 'f03', 'f04', 'f05', 'f06', 'f07'];
-        const randomExpr = expressions[Math.floor(Math.random() * expressions.length)];
-        this.model.expression(randomExpr);
-      }
-
-      animateMouth() {
-        if (this.mouthAnimationInterval) clearInterval(this.mouthAnimationInterval);
-        this.mouthAnimationInterval = setInterval(() => {
-          const value = Math.abs(Math.sin(Date.now() / 150)) * 0.8;
-          this.model.internalModel?.coreModel?.setParameterValueById('PARAM_MOUTH_OPEN_Y', value);
+      #animateMouth() {
+        if (this.#mouthAnimationInterval) clearInterval(this.#mouthAnimationInterval);
+        this.#mouthAnimationInterval = setInterval(() => {
+          if (this.#model?.internalModel?.coreModel) {
+            const value = Math.abs(Math.sin(Date.now() / 150)) * 0.8;
+            this.#model.internalModel.coreModel.setParameterValueById('PARAM_MOUTH_OPEN_Y', value);
+          }
         }, 100);
       }
 
-      stopMouthAnimation() {
-        if (this.mouthAnimationInterval) {
-          clearInterval(this.mouthAnimationInterval);
-          this.mouthAnimationInterval = null;
+      #stopMouthAnimation() {
+        if (this.#mouthAnimationInterval) {
+          clearInterval(this.#mouthAnimationInterval);
+          this.#mouthAnimationInterval = null;
         }
-        this.model.internalModel?.coreModel?.setParameterValueById('PARAM_MOUTH_OPEN_Y', 0);
+        if (this.#model?.internalModel?.coreModel) {
+          this.#model.internalModel.coreModel.setParameterValueById('PARAM_MOUTH_OPEN_Y', 0);
+        }
       }
 
-      startIdleLoop() {
+      #startIdleLoop() {
         setInterval(() => {
-          if (!this.isSpeaking && !this.isListening && this.model) {
-            this.model.internalModel.motionManager.startRandomMotion('idle');
+          if (!this.#isSpeaking && !this.#isListening && this.#model) {
+            this.#startRandomIdle();
           }
         }, 8000);
       }
 
-      hapticFeedback() {
-        const { WebApp } = window.Telegram ?? {};
+      #hapticFeedback() {
+        const { WebApp } = window.Telegram;
         if (WebApp?.HapticFeedback) {
           WebApp.HapticFeedback.impactOccurred('light');
         }
       }
 
-      showError(message) {
-        const { WebApp } = window.Telegram ?? {};
+      #showError(message) {
+        const { WebApp } = window.Telegram;
         if (WebApp?.showAlert) {
           WebApp.showAlert(message);
         } else {
@@ -317,9 +474,15 @@
         }
       }
 
-      setupCleanup() {
+      #renderFallback() {
+        const fallbackText = document.createElement('div');
+        fallbackText.innerHTML = '<h1 style="color: #ffffff; text-align: center;">Paradise is resting... 🔄</h1>';
+        document.body.appendChild(fallbackText);
+      }
+
+      #setupCleanup() {
         window.addEventListener('beforeunload', () => {
-          this.stopListening();
+          this.#stopListening();
           window.speechSynthesis.cancel();
         });
       }
