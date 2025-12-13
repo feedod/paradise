@@ -25,7 +25,7 @@
     {
       "imports": {
         "pixi.js": "https://esm.sh/pixi.js@7.4.0",
-        "pixi-live2d-display": "https://esm.sh/pixi-live2d-display@0.5.0-beta"
+        "pixi-live2d-display": "https://esm.sh/pixi-live2d-display@0.5.0-beta/cubism4"
       }
     }
   </script>
@@ -51,8 +51,9 @@
           Telegram.WebApp.disableVerticalSwipes();
         }
 
+        const canvas = document.getElementById('canvas');
         const app = new Application({
-          view: document.getElementById('canvas'),
+          view: canvas,
           autoStart: true,
           backgroundColor: 0x000000,
           resizeTo: window,
@@ -63,21 +64,24 @@
         });
 
         const modelUrl = 'https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display/test/assets/haru/haru_greeter_t03.model3.json';
-        const model = await Live2DModel.from(modelUrl);
-
-        model.automator.autoUpdate = true;
+        const model = await Live2DModel.from(modelUrl, { autoUpdate: true });
 
         app.stage.addChild(model);
 
-        model.anchor.set(0.5, 0.5);
+        model.anchor.set(0.5);
         model.position.set(app.renderer.width / 2, app.renderer.height / 2);
-        const scaleFactor = Math.min(app.renderer.width / model.width, app.renderer.height / model.height) * 0.8;
-        model.scale.set(scaleFactor);
+        const updateScale = () => {
+          const scale = Math.min(
+            app.renderer.width / model.width,
+            app.renderer.height / model.height
+          ) * 0.8;
+          model.scale.set(scale);
+        };
+        updateScale();
 
         const resizeHandler = () => {
-          const newScale = Math.min(app.renderer.width / model.width, app.renderer.height / model.height) * 0.8;
-          model.scale.set(newScale);
           model.position.set(app.renderer.width / 2, app.renderer.height / 2);
+          updateScale();
         };
         window.addEventListener('resize', resizeHandler, { passive: true });
         window.addEventListener('orientationchange', resizeHandler, { passive: true });
@@ -91,7 +95,7 @@
           recognition.interimResults = false;
           recognition.lang = 'en-US';
 
-          let mouthAnimationInterval;
+          let mouthAnimationInterval = null;
 
           const animateMouth = () => {
             if (mouthAnimationInterval) clearInterval(mouthAnimationInterval);
@@ -111,6 +115,9 @@
 
           const getAIResponse = async (userInput) => {
             const apiKey = 'YOUR_XAI_API_KEY_HERE';
+            if (apiKey === 'YOUR_XAI_API_KEY_HERE') {
+              return 'Hello! I am Airi. To use me fully, please replace the API key.';
+            }
             const endpoint = 'https://api.x.ai/v1/chat/completions';
 
             const response = await fetch(endpoint, {
@@ -160,44 +167,44 @@
 
                 utterance.onstart = () => {
                   animateMouth();
-                  model.motion('idle');
+                  model.startRandomIdleMotion();
                 };
 
                 utterance.onend = () => {
                   stopMouthAnimation();
-                  recognition.start();
+                  setTimeout(() => recognition.start(), 500);
                 };
 
                 utterance.onerror = (err) => {
                   console.error('Speech synthesis error:', err);
                   stopMouthAnimation();
-                  recognition.start();
+                  setTimeout(() => recognition.start(), 500);
                 };
 
                 speechSynthesis.speak(utterance);
               } catch (error) {
                 console.error('Processing error:', error);
-                recognition.start();
+                setTimeout(() => recognition.start(), 500);
               }
             } else {
-              recognition.start();
+              setTimeout(() => recognition.start(), 500);
             }
           };
 
           recognition.onerror = (event) => {
             console.warn('Speech recognition error:', event.error);
             if (event.error !== 'aborted') {
-              recognition.start();
+              setTimeout(() => recognition.start(), 500);
             }
           };
 
           recognition.onend = () => {
             if (!speechSynthesis.speaking) {
-              recognition.start();
+              setTimeout(() => recognition.start(), 500);
             }
           };
 
-          recognition.start();
+          setTimeout(() => recognition.start(), 1000);
         } else {
           console.warn('Speech APIs not supported in this browser.');
         }
