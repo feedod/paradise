@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Paradise</title>
   <style>
     body {
       margin: 0;
@@ -25,7 +26,7 @@
   </style>
   <script src="https://telegram.org/js/telegram-web-app.js" crossorigin="anonymous"></script>
   <script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/speak-tts@3.2.1/lib/speak-tts.min.js" crossorigin="anonymous"></script>
+  <script src="https://js.puter.com/v2/"></script>
 </head>
 <body>
   <canvas id="canvas" aria-hidden="true"></canvas>
@@ -33,18 +34,18 @@
   <script type="module">
     'use strict';
 
-    import { Application } from 'https://esm.sh/pixi.js@7.4.0?external=PIXI';
-    import { Live2DModel } from 'https://esm.sh/pixi-live2d-display@0.5.0-beta';
-    import annyang from 'https://esm.sh/annyang@2.0.0';
+    import { Application } from 'https://esm.sh/pixi.js@7.4.0';
+    import { Live2DModel } from 'https://esm.sh/pixi-live2d-display@0.4.0';
 
-    class AiriApp {
+    class Paradise {
       constructor() {
         this.model = null;
-        this.speechTts = null;
+        this.recognition = null;
         this.mouthAnimationInterval = null;
         this.conversationHistory = [];
         this.isSpeaking = false;
         this.isListening = false;
+        this.app = null;
 
         this.init();
       }
@@ -52,16 +53,15 @@
       async init() {
         try {
           this.setupTelegram();
-          const app = await this.setupPixi();
-          this.model = await this.loadModel(app);
-          this.setupModel(app);
-          await this.setupTts();
+          this.app = await this.setupPixi();
+          this.model = await this.loadModel();
+          this.setupModel();
           this.setupStt();
           this.startIdleLoop();
           this.setupCleanup();
         } catch (error) {
-          console.error('Airi initialization failed:', error);
-          this.showError('Failed to load Airi. Please refresh the app.');
+          console.error('Paradise initialization failed:', error);
+          this.showError('Failed to load Paradise. Please refresh the app.');
         }
       }
 
@@ -97,7 +97,7 @@
         return app;
       }
 
-      async loadModel(app) {
+      async loadModel() {
         const modelUrl = 'https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display/test/assets/haru/haru_greeter_t03.model3.json';
         const model = await Live2DModel.from(modelUrl, {
           autoUpdate: true
@@ -105,64 +105,58 @@
 
         model.alpha = 1;
         model.visible = true;
-        app.stage.addChild(model);
-        app.stage.interactive = true;
+        this.app.stage.addChild(model);
+        this.app.stage.interactive = true;
         model.interactive = true;
+
+        console.log('Model loaded and added to stage');
 
         return model;
       }
 
-      setupModel(app) {
+      setupModel() {
         this.model.anchor.set(0.5);
-        this.updateTransform(app);
+        this.updateTransform();
 
         this.model.on('hit', (hitAreas) => {
           if (hitAreas.includes('Body')) {
-            this.model.motion('Tap', 'haru_g_m14');
+            this.model.internalModel.motionManager.startRandomMotion('tap_body');
             this.hapticFeedback();
           }
         });
 
-        this.model.internalModel.motionManager.startRandomMotion('Idle');
+        this.model.internalModel.motionManager.startRandomMotion('idle');
       }
 
-      updateTransform(app) {
-        if (!this.model) return;
-        this.model.position.set(app.renderer.width / 2, app.renderer.height / 2);
+      updateTransform() {
+        if (!this.model || !this.app) return;
+        this.model.position.set(this.app.renderer.width / 2, this.app.renderer.height / 2);
         const scale = Math.min(
-          (app.renderer.width * 0.9) / this.model.width,
-          (app.renderer.height * 0.9) / this.model.height
+          (this.app.renderer.width * 0.9) / this.model.width,
+          (this.app.renderer.height * 0.9) / this.model.height
         );
         this.model.scale.set(scale);
       }
 
       handleResize() {
-        if (this.app) {
-          this.updateTransform(this.app);
-        }
-      }
-
-      async setupTts() {
-        this.speechTts = new Speech();
-        await this.speechTts.init({
-          lang: 'en-us',
-          volume: 0.9,
-          rate: 1.1,
-          pitch: 1.3,
-          splitSentences: false
-        });
+        this.updateTransform();
       }
 
       setupStt() {
-        if (!annyang) {
-          console.warn('Annyang not supported');
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+          console.warn('Speech Recognition not supported');
           return;
         }
 
-        annyang.setLanguage('en-US');
-        annyang.addCallback('result', this.handleSpeechResult.bind(this));
-        annyang.addCallback('error', this.handleSttError.bind(this));
-        annyang.addCallback('end', this.handleSttEnd.bind(this));
+        this.recognition = new SpeechRecognition();
+        this.recognition.continuous = false;
+        this.recognition.interimResults = false;
+        this.recognition.lang = 'en-US';
+
+        this.recognition.onresult = this.handleSpeechResult.bind(this);
+        this.recognition.onerror = this.handleSttError.bind(this);
+        this.recognition.onend = this.handleSttEnd.bind(this);
 
         setTimeout(() => {
           this.startListening();
@@ -170,33 +164,33 @@
       }
 
       startListening() {
-        if (annyang && !this.isListening && !this.isSpeaking) {
-          annyang.start({ continuous: true, autoRestart: true });
+        if (this.recognition && !this.isListening && !this.isSpeaking) {
+          this.recognition.start();
           this.isListening = true;
         }
       }
 
       stopListening() {
-        if (annyang && this.isListening) {
-          annyang.abort();
+        if (this.recognition && this.isListening) {
+          this.recognition.stop();
           this.isListening = false;
         }
       }
 
-      handleSpeechResult(userSaid) {
-        if (userSaid && userSaid.length > 0) {
-          const userText = userSaid[0].trim();
-          if (userText) {
-            this.processInput(userText);
-          }
+      handleSpeechResult(event) {
+        const userText = event.results[0][0].transcript.trim();
+        if (userText) {
+          this.processInput(userText);
         }
       }
 
-      handleSttError(error) {
-        console.warn('STT error:', error);
+      handleSttError(event) {
+        console.warn('STT error:', event.error);
+        this.isListening = false;
       }
 
       handleSttEnd() {
+        this.isListening = false;
         if (!this.isSpeaking) {
           setTimeout(() => this.startListening(), 500);
         }
@@ -207,7 +201,8 @@
         this.conversationHistory.push({ role: 'user', content: userText });
 
         try {
-          this.model.motion('Tap', 'haru_g_m05');
+          this.model.internalModel.motionManager.startRandomMotion('tap_body');
+
           const aiResponse = await this.getAIResponse(userText);
           this.conversationHistory.push({ role: 'assistant', content: aiResponse });
 
@@ -224,83 +219,59 @@
       }
 
       async getAIResponse(userInput) {
-        const apiKey = 'YOUR_XAI_API_KEY_HERE'; // Securely replace in production
-        if (apiKey === 'YOUR_XAI_API_KEY_HERE') {
-          throw new Error('API key not configured');
+        if (typeof puter === 'undefined' || !puter.ai) {
+          throw new Error('Puter.js not loaded');
         }
 
-        const endpoint = 'https://api.x.ai/v1/chat/completions';
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000);
+        const systemPrompt = 'You are Paradise, a lively and unique AI companion with pink and blue aesthetics. Keep responses concise, fun, and under 100 words.';
+        const messages = [
+          { role: 'system', content: systemPrompt },
+          ...this.conversationHistory.slice(-5)
+        ];
 
-        try {
-          const response = await fetch(endpoint, {
-            method: 'POST',
-            signal: controller.signal,
-            headers: {
-              'Authorization': `Bearer ${apiKey}`,
-              'Content-Type': 'application/json',
-              'User-Agent': 'Airi/1.0'
-            },
-            body: JSON.stringify({
-              model: 'grok-4-0709',
-              messages: [
-                {
-                  role: 'system',
-                  content: 'You are Airi, a lively and unique AI companion with pink and blue aesthetics. Keep responses concise, fun, and under 100 words.'
-                },
-                ...this.conversationHistory.slice(-5) // Limit history for context
-              ],
-              temperature: 0.8,
-              max_tokens: 150,
-              stream: false
-            })
-          });
+        const response = await puter.ai.chat(messages, {
+          model: 'gpt-5-nano',
+          temperature: 0.8,
+          max_tokens: 150
+        });
 
-          clearTimeout(timeoutId);
-
-          if (!response.ok) {
-            throw new Error(`API error: ${response.status} ${response.statusText}`);
-          }
-
-          const data = await response.json();
-          return data.choices[0]?.message?.content?.trim() || 'Sorry, I could not process that.';
-        } catch (error) {
-          if (error.name === 'AbortError') {
-            throw new Error('Request timeout');
-          }
-          throw error;
-        }
+        return response.message.content.trim() || 'Sorry, I could not process that.';
       }
 
       async speak(text) {
         this.isSpeaking = true;
         this.animateMouth();
 
-        this.speechTts.speak({
-          text,
-          queue: false,
-          listeners: {
-            onstart: () => {
-              this.model.internalModel.motionManager.startRandomMotion('Idle');
-            },
-            onend: () => {
-              this.stopMouthAnimation();
-              this.isSpeaking = false;
-              this.setRandomExpression();
-              setTimeout(() => this.startListening(), 500);
-            },
-            onerror: (error) => {
-              console.error('TTS error:', error);
-              this.stopMouthAnimation();
-              this.isSpeaking = false;
-              setTimeout(() => this.startListening(), 500);
-            }
-          }
-        });
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'en-US';
+        utterance.volume = 0.9;
+        utterance.rate = 1.1;
+        utterance.pitch = 1.3;
+
+        utterance.onstart = () => {
+          this.model.internalModel.motionManager.startRandomMotion('idle');
+        };
+
+        utterance.onend = () => {
+          this.stopMouthAnimation();
+          this.isSpeaking = false;
+          this.setRandomExpression();
+          setTimeout(() => this.startListening(), 500);
+        };
+
+        utterance.onerror = (error) => {
+          console.error('TTS error:', error);
+          this.stopMouthAnimation();
+          this.isSpeaking = false;
+          setTimeout(() => this.startListening(), 500);
+        };
+
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(utterance);
       }
 
       setRandomExpression() {
+        if (!this.model) return;
         const expressions = ['f00', 'f01', 'f02', 'f03', 'f04', 'f05', 'f06', 'f07'];
         const randomExpr = expressions[Math.floor(Math.random() * expressions.length)];
         this.model.expression(randomExpr);
@@ -324,8 +295,8 @@
 
       startIdleLoop() {
         setInterval(() => {
-          if (!this.isSpeaking && !this.isListening) {
-            this.model.internalModel.motionManager.startRandomMotion('Idle');
+          if (!this.isSpeaking && !this.isListening && this.model) {
+            this.model.internalModel.motionManager.startRandomMotion('idle');
           }
         }, 8000);
       }
@@ -349,14 +320,12 @@
       setupCleanup() {
         window.addEventListener('beforeunload', () => {
           this.stopListening();
-          if (this.speechTts) {
-            this.speechTts.cancel();
-          }
+          window.speechSynthesis.cancel();
         });
       }
     }
 
-    new AiriApp();
+    new Paradise();
   </script>
 </body>
 </html>
