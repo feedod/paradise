@@ -28,9 +28,7 @@
     }
   </style>
   <script src="https://telegram.org/js/telegram-web-app.js" crossorigin="anonymous"></script>
-  <script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js" crossorigin="anonymous"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.4.0/pixi.min.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/index.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/live2d-widget@3.0.0/lib/L2Dwidget.min.js" crossorigin="anonymous"></script>
   <script src="https://js.puter.com/v2/"></script>
 </head>
 <body>
@@ -41,13 +39,11 @@
 
     class Paradise {
       constructor() {
-        this.model = null;
+        this.widget = null;
         this.recognition = null;
-        this.mouthAnimationInterval = null;
         this.conversationHistory = [];
         this.isSpeaking = false;
         this.isListening = false;
-        this.app = null;
 
         if (!window.Telegram?.WebApp) return;
 
@@ -57,10 +53,8 @@
       async init() {
         try {
           this.setupTelegram();
-          this.app = await this.setupPixi();
-          await this.loadAndSetupModel();
+          await this.loadLive2DWidget();
           this.setupStt();
-          this.startIdleLoop();
           this.setupCleanup();
         } catch (error) {
           console.error('Paradise initialization failed:', error);
@@ -85,92 +79,43 @@
         });
       }
 
-      async setupPixi() {
-        const canvas = document.getElementById('canvas');
-        const app = new PIXI.Application({
-          view: canvas,
-          autoStart: true,
-          backgroundColor: 0x000000,
-          resizeTo: window,
-          resolution: window.devicePixelRatio || 1,
-          autoDensity: true,
-          antialias: true,
-          powerPreference: 'high-performance',
-          sharedTicker: false
-        });
-
-        window.addEventListener('resize', this.handleResize.bind(this), { passive: true });
-        window.addEventListener('orientationchange', () => setTimeout(this.handleResize.bind(this), 0));
-
-        return app;
-      }
-
-      async loadAndSetupModel() {
+      async loadLive2DWidget() {
         try {
-          const modelUrl = 'https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display/test/assets/haru/haru_greeter_t03.model3.json';
-          this.model = await PIXI.live2d.Live2DModel.from(modelUrl, { autoUpdate: true });
+          this.widget = await L2Dwidget.init({
+            pluginRootPath: 'https://cdn.jsdelivr.net/npm/live2d-widget@3.0.0/',
+            pluginModelPath: 'assets/',
+            model: {
+              jsonPath: 'https://cdn.jsdelivr.net/npm/live2d-widget-model-haru@1.0.5/assets/haru02.model.json'
+            },
+            display: {
+              position: 'right',
+              width: window.innerWidth * 0.8,
+              height: window.innerHeight * 0.9,
+              hOffset: 0,
+              vOffset: 0
+            },
+            mobile: {
+              show: true,
+              scale: 0.8
+            },
+            react: {
+              opacityDefault: 1,
+              opacityOnHover: 1
+            }
+          });
 
-          this.model.alpha = 1;
-          this.model.visible = true;
-          this.app.stage.addChild(this.model);
-          this.app.stage.interactive = true;
-          this.model.interactive = true;
+          this.widget.model.on('talk', () => {
+            this.animateMouth();
+          });
 
-          this.setupModelInteractions();
-          this.updateTransform();
-          this.startRandomIdle();
-          this.setupEyeBlink();
+          this.widget.model.on('idle', () => {
+            this.stopMouthAnimation();
+          });
+
         } catch (error) {
-          console.error('Model loading failed:', error);
+          console.error('Live2D widget loading failed:', error);
           throw error;
         }
-      }
-
-      setupModelInteractions() {
-        this.model.on('hit', (hitAreas) => {
-          if (hitAreas.includes('Body')) {
-            this.triggerTapMotion();
-            this.hapticFeedback();
-          }
-        });
-      }
-
-      triggerTapMotion() {
-        if (this.model?.internalModel?.motionManager) {
-          this.model.internalModel.motionManager.startRandomMotion('Tap');
-        }
-      }
-
-      updateTransform() {
-        if (!this.model || !this.app) return;
-        this.model.position.set(this.app.renderer.width / 2, this.app.renderer.height / 2);
-        const scale = Math.min(
-          (this.app.renderer.width * 0.9) / this.model.width,
-          (this.app.renderer.height * 0.9) / this.model.height
-        );
-        this.model.scale.set(scale);
-      }
-
-      handleResize() {
-        this.updateTransform();
-      }
-
-      startRandomIdle() {
-        if (this.model?.internalModel?.motionManager) {
-          this.model.internalModel.motionManager.startRandomMotion('Idle');
-        }
-      }
-
-      setupEyeBlink() {
-        if (!this.model?.internalModel?.coreModel) return;
-        const coreModel = this.model.internalModel.coreModel;
-        setInterval(() => {
-          if (!this.isSpeaking) {
-            const blinkValue = Math.random() < 0.1 ? 0 : 1;
-            coreModel.setParameterValueById('ParamEyeLOpen', blinkValue);
-            coreModel.setParameterValueById('ParamEyeROpen', blinkValue);
-          }
-        }, 3000);
       }
 
       setupStt() {
@@ -238,15 +183,23 @@
         this.conversationHistory.push({ role: 'user', content: userText });
 
         try {
-          this.triggerEmotion('surprise');
+          if (this.widget) {
+            this.widget.model.talk('surprise');
+          }
+
           const aiResponse = await this.getAIResponse(userText);
           this.conversationHistory.push({ role: 'assistant', content: aiResponse });
 
-          const emotion = this.detectEmotion(aiResponse);
-          this.triggerEmotion(emotion);
+          if (this.widget) {
+            const emotion = this.detectEmotion(aiResponse);
+            this.widget.model.talk(emotion);
+          }
+
           await this.speak(aiResponse);
         } catch (error) {
-          this.triggerEmotion('sad');
+          if (this.widget) {
+            this.widget.model.talk('sad');
+          }
           await this.speak('Oops, something went wrong. Let\'s try again!');
         } finally {
           if (!this.isSpeaking) {
@@ -280,54 +233,7 @@
         if (lowerText.includes('happy') || lowerText.includes('fun') || lowerText.includes('great')) return 'happy';
         if (lowerText.includes('sad') || lowerText.includes('sorry') || lowerText.includes('oops')) return 'sad';
         if (lowerText.includes('laugh') || lowerText.includes('haha')) return 'laugh';
-        return 'neutral';
-      }
-
-      triggerEmotion(emotion) {
-        if (!this.model?.internalModel) return;
-
-        const expressions = {
-          happy: 'f01',
-          sad: 'f03',
-          laugh: 'f02',
-          surprise: 'f04',
-          neutral: 'f00'
-        };
-        const expr = expressions[emotion] || 'f00';
-        this.model.expression(expr);
-
-        switch (emotion) {
-          case 'laugh':
-            this.animateLaughter();
-            break;
-          case 'sad':
-            this.animateSad();
-            break;
-          default:
-            this.startRandomIdle();
-        }
-      }
-
-      animateLaughter() {
-        if (this.model?.internalModel?.coreModel) {
-          const coreModel = this.model.internalModel.coreModel;
-          let laughCount = 0;
-          const laughInterval = setInterval(() => {
-            const mouthValue = Math.sin(Date.now() / 200) * 0.5 + 0.5;
-            coreModel.setParameterValueById('PARAM_MOUTH_OPEN_Y', Math.abs(mouthValue));
-            laughCount++;
-            if (laughCount > 10) {
-              clearInterval(laughInterval);
-              coreModel.setParameterValueById('PARAM_MOUTH_OPEN_Y', 0);
-            }
-          }, 150);
-        }
-      }
-
-      animateSad() {
-        if (this.model?.internalModel?.motionManager) {
-          this.model.internalModel.motionManager.startRandomMotion('Idle');
-        }
+        return 'idle';
       }
 
       async speak(text) {
@@ -340,14 +246,9 @@
         utterance.rate = 1.1;
         utterance.pitch = 1.3;
 
-        utterance.onstart = () => {
-          this.startRandomIdle();
-        };
-
         utterance.onend = () => {
           this.stopMouthAnimation();
           this.isSpeaking = false;
-          this.triggerEmotion('neutral');
           setTimeout(() => this.startListening(), 500);
         };
 
@@ -362,37 +263,14 @@
       }
 
       animateMouth() {
-        if (this.mouthAnimationInterval) clearInterval(this.mouthAnimationInterval);
-        this.mouthAnimationInterval = setInterval(() => {
-          if (this.model?.internalModel?.coreModel) {
-            const value = Math.abs(Math.sin(Date.now() / 150)) * 0.8;
-            this.model.internalModel.coreModel.setParameterValueById('PARAM_MOUTH_OPEN_Y', value);
-          }
-        }, 100);
+        if (this.widget?.model) {
+          this.widget.model.openMouth();
+        }
       }
 
       stopMouthAnimation() {
-        if (this.mouthAnimationInterval) {
-          clearInterval(this.mouthAnimationInterval);
-          this.mouthAnimationInterval = null;
-        }
-        if (this.model?.internalModel?.coreModel) {
-          this.model.internalModel.coreModel.setParameterValueById('PARAM_MOUTH_OPEN_Y', 0);
-        }
-      }
-
-      startIdleLoop() {
-        setInterval(() => {
-          if (!this.isSpeaking && !this.isListening && this.model) {
-            this.startRandomIdle();
-          }
-        }, 8000);
-      }
-
-      hapticFeedback() {
-        const { WebApp } = window.Telegram;
-        if (WebApp?.HapticFeedback) {
-          WebApp.HapticFeedback.impactOccurred('light');
+        if (this.widget?.model) {
+          this.widget.model.closeMouth();
         }
       }
 
