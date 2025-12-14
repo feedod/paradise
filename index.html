@@ -77,7 +77,7 @@
 
         WebApp.BackButton.show();
         WebApp.BackButton.onClick(() => {
-          WebApp.showConfirm('Do you want to close Paradise?', (confirmed) => {
+          WebApp.showConfirm('Ошибка загрузки модели. Закрыть Paradise?', (confirmed) => {
             if (confirmed) {
               WebApp.close();
             }
@@ -106,19 +106,24 @@
       }
 
       async loadAndSetupModel() {
-        const modelUrl = 'https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display/test/assets/haru/haru_greeter_t03.model3.json';
-        this.model = await PIXI.live2d.Live2DModel.from(modelUrl, { autoUpdate: true });
+        try {
+          const modelUrl = 'https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display/test/assets/haru/haru_greeter_t03.model3.json';
+          this.model = await PIXI.live2d.Live2DModel.from(modelUrl, { autoUpdate: true });
 
-        this.model.alpha = 1;
-        this.model.visible = true;
-        this.app.stage.addChild(this.model);
-        this.app.stage.interactive = true;
-        this.model.interactive = true;
+          this.model.alpha = 1;
+          this.model.visible = true;
+          this.app.stage.addChild(this.model);
+          this.app.stage.interactive = true;
+          this.model.interactive = true;
 
-        this.setupModelInteractions();
-        this.updateTransform();
-        this.startRandomIdle();
-        this.setupEyeBlink();
+          this.setupModelInteractions();
+          this.updateTransform();
+          this.startRandomIdle();
+          this.setupEyeBlink();
+        } catch (error) {
+          console.error('Model loading failed:', error);
+          throw error;
+        }
       }
 
       setupModelInteractions() {
