@@ -23,7 +23,6 @@
   </style>
   <script src="https://telegram.org/js/telegram-web-app.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/live2d-widget@3.1.4/lib/L2Dwidget.min.js" crossorigin="anonymous"></script>
-  <script src="https://js.puter.com/v2/"></script>
 </head>
 <body>
 
@@ -34,7 +33,6 @@
       constructor() {
         this.widget = null;
         this.recognition = null;
-        this.conversationHistory = [];
         this.isSpeaking = false;
         this.isListening = false;
 
@@ -64,7 +62,7 @@
 
         WebApp.BackButton.show();
         WebApp.BackButton.onClick(() => {
-          WebApp.showConfirm('Ошибка загрузки модели. Закрыть Paradise?', (confirmed) => {
+          WebApp.showConfirm('Закрыть Paradise?', (confirmed) => {
             if (confirmed) {
               WebApp.close();
             }
@@ -102,7 +100,10 @@
 
       setupStt() {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SpeechRecognition) return;
+        if (!SpeechRecognition) {
+          console.warn('Speech Recognition not supported');
+          return;
+        }
 
         this.recognition = new SpeechRecognition();
         this.recognition.continuous = false;
@@ -162,15 +163,12 @@
 
       async processInput(userText) {
         this.stopListening();
-        this.conversationHistory.push({ role: 'user', content: userText });
 
         try {
-          const aiResponse = await this.getAIResponse(userText);
-          this.conversationHistory.push({ role: 'assistant', content: aiResponse });
-
+          const aiResponse = this.getLocalResponse(userText);
           await this.speak(aiResponse);
         } catch (error) {
-          await this.speak('Oops, something went wrong. Let\'s try again!');
+          await this.speak('Привет! Я Paradise. Говори со мной 😊');
         } finally {
           if (!this.isSpeaking) {
             setTimeout(() => this.startListening(), 1000);
@@ -178,34 +176,41 @@
         }
       }
 
-      async getAIResponse(userInput) {
-        if (typeof puter === 'undefined' || !puter.ai) {
-          throw new Error('Puter.js not loaded');
+      getLocalResponse(userInput) {
+        const lower = userInput.toLowerCase();
+
+        if (lower.includes('привет') || lower.includes('hi') || lower.includes('hello')) {
+          return 'Привет! Я Paradise, твоя милая спутница 💕 Как дела?';
+        }
+        if (lower.includes('как дела') || lower.includes('how are you')) {
+          return 'У меня всё отлично! А у тебя? 😊';
+        }
+        if (lower.includes('пока') || lower.includes('bye')) {
+          return 'Пока-пока! Возвращайся скорее 🌸';
+        }
+        if (lower.includes('спасибо') || lower.includes('thank')) {
+          return 'Всегда пожалуйста! 💖';
         }
 
-        const systemPrompt = 'You are Paradise, a lively and unique AI companion with pink and blue aesthetics. Keep responses concise, fun, and under 100 words. End with an emoji.';
-        const messages = [
-          { role: 'system', content: systemPrompt },
-          ...this.conversationHistory.slice(-4)
+        const responses = [
+          'Ой, как интересно! Расскажи подробнее 😍',
+          'Хихи, ты такой милый когда так говоришь 🌟',
+          'Ммм, мне нравится с тобой болтать 💕',
+          'Ты сегодня в настроении? Я да! ✨',
+          'Расскажи мне что-нибудь забавное 😘'
         ];
 
-        const response = await puter.ai.chat(messages, {
-          model: 'gpt-5-nano',
-          temperature: 0.8,
-          max_tokens: 150
-        });
-
-        return response.message.content.trim();
+        return responses[Math.floor(Math.random() * responses.length)];
       }
 
       async speak(text) {
         this.isSpeaking = true;
 
         const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'en-US';
+        utterance.lang = 'ru-RU'; // или 'en-US' если хотите английский
         utterance.volume = 0.9;
-        utterance.rate = 1.1;
-        utterance.pitch = 1.3;
+        utterance.rate = 1.0;
+        utterance.pitch = 1.4;
 
         utterance.onend = () => {
           this.isSpeaking = false;
