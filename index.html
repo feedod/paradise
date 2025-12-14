@@ -8,10 +8,6 @@
       margin: 0;
       padding: 0;
       background-color: #000000;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
       overflow: hidden;
       touch-action: none;
       font-family: system-ui, -apple-system, sans-serif;
@@ -20,19 +16,29 @@
       -moz-user-select: none;
       -ms-user-select: none;
     }
+    #canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
   </style>
   <script src="https://telegram.org/js/telegram-web-app.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/live2d-widget@3.1.4/lib/L2Dwidget.min.js" crossorigin="anonymous"></script>
+  <script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pixi.js@6/dist/browser/pixi.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display/dist/index.min.js" crossorigin="anonymous"></script>
 </head>
 <body>
+  <canvas id="canvas"></canvas>
 
   <script>
     'use strict';
 
     class Paradise {
       constructor() {
-        this.widget = null;
+        this.model = null;
+        this.app = null;
         this.recognition = null;
+        this.mouthInterval = null;
         this.isSpeaking = false;
         this.isListening = false;
 
@@ -44,11 +50,11 @@
       async init() {
         try {
           this.setupTelegram();
-          await this.loadLive2DWidget();
+          await this.setupPixiAndModel();
           this.setupStt();
           this.setupCleanup();
         } catch (error) {
-          console.error('Paradise initialization failed:', error);
+          console.error('Initialization failed:', error);
         }
       }
 
@@ -70,51 +76,65 @@
         });
       }
 
-      async loadLive2DWidget() {
-        try {
-          L2Dwidget.init({
-            model: {
-              jsonPath: 'https://cdn.jsdelivr.net/npm/live2d-widget-model-haru@1.0.5/assets/haru02.model.json'
-            },
-            display: {
-              superSample: 2,
-              width: window.innerWidth,
-              height: window.innerHeight,
-              position: 'center',
-              hOffset: 0,
-              vOffset: 0
-            },
-            mobile: {
-              show: true,
-              scale: 1
-            },
-            react: {
-              opacityDefault: 1
+      async setupPixiAndModel() {
+        const canvas = document.getElementById('canvas');
+
+        this.app = new PIXI.Application({
+          view: canvas,
+          transparent: false,
+          backgroundColor: 0x000000,
+          resizeTo: window,
+          resolution: window.devicePixelRatio || 1,
+          autoDensity: true
+        });
+
+        const modelUrl = 'https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display/test/assets/haru/haru_greeter_t03.model3.json';
+
+        this.model = await PIXI.live2d.Live2DModel.from(modelUrl);
+
+        this.app.stage.addChild(this.model);
+
+        this.model.scale.set(0.25);
+        this.model.anchor.set(0.5, 0.5);
+        this.updatePosition();
+
+        this.model.on('hit', (hitAreas) => {
+          if (hitAreas.length > 0) {
+            this.model.motion('Tap');
+            if (window.Telegram?.WebApp?.HapticFeedback) {
+              window.Telegram.WebApp.HapticFeedback.impactOccurred('light');
             }
-          });
-        } catch (error) {
-          console.error('Live2D widget loading failed:', error);
-          throw error;
+          }
+        });
+
+        this.model.motion('Idle');
+
+        window.addEventListener('resize', () => this.updatePosition());
+      }
+
+      updatePosition() {
+        if (this.model && this.app) {
+          this.model.position.set(this.app.screen.width / 2, this.app.screen.height / 2);
+
+          const scale = Math.min(this.app.screen.width / this.model.width, this.app.screen.height / this.model.height) * 0.9;
+          this.model.scale.set(scale);
         }
       }
 
       setupStt() {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SpeechRecognition) {
-          console.warn('Speech Recognition not supported');
-          return;
-        }
+        if (!SpeechRecognition) return;
 
         this.recognition = new SpeechRecognition();
         this.recognition.continuous = false;
         this.recognition.interimResults = false;
-        this.recognition.lang = 'en-US';
+        this.recognition.lang = 'ru-RU';
 
         this.recognition.onresult = this.handleSpeechResult.bind(this);
         this.recognition.onerror = this.handleSttError.bind(this);
         this.recognition.onend = this.handleSttEnd.bind(this);
 
-        setTimeout(() => this.startListening(), 1500);
+        setTimeout(() => this.startListening(), 2000);
       }
 
       startListening() {
@@ -122,7 +142,7 @@
           try {
             this.recognition.start();
             this.isListening = true;
-          } catch (error) {
+          } catch (e) {
             setTimeout(() => this.startListening(), 1000);
           }
         }
@@ -131,27 +151,22 @@
       stopListening() {
         if (this.recognition && this.isListening) {
           try {
-            this.recognition.stop();
-          } catch (error) {}
+            this.recognition.abort();
+          } catch (e) {}
           this.isListening = false;
         }
       }
 
       handleSpeechResult(event) {
-        const userText = Array.from(event.results)
-          .map(result => result[0].transcript)
-          .join('')
-          .trim();
-        if (userText) {
-          this.processInput(userText);
+        const transcript = event.results[0][0].transcript.trim();
+        if (transcript) {
+          this.processInput(transcript);
         }
       }
 
-      handleSttError(event) {
+      handleSttError() {
         this.isListening = false;
-        if (event.error !== 'aborted') {
-          setTimeout(() => this.startListening(), 1000);
-        }
+        setTimeout(() => this.startListening(), 1000);
       }
 
       handleSttEnd() {
@@ -161,75 +176,84 @@
         }
       }
 
-      async processInput(userText) {
+      async processInput(text) {
         this.stopListening();
 
-        try {
-          const aiResponse = this.getLocalResponse(userText);
-          await this.speak(aiResponse);
-        } catch (error) {
-          await this.speak('Привет! Я Paradise. Говори со мной 😊');
-        } finally {
-          if (!this.isSpeaking) {
-            setTimeout(() => this.startListening(), 1000);
-          }
-        }
+        const response = this.getLocalResponse(text);
+
+        this.model.motion('Tap');
+        this.model.expression();
+
+        await this.speak(response);
+
+        this.model.motion('Idle');
       }
 
-      getLocalResponse(userInput) {
-        const lower = userInput.toLowerCase();
+      getLocalResponse(input) {
+        const lower = input.toLowerCase();
 
-        if (lower.includes('привет') || lower.includes('hi') || lower.includes('hello')) {
-          return 'Привет! Я Paradise, твоя милая спутница 💕 Как дела?';
-        }
-        if (lower.includes('как дела') || lower.includes('how are you')) {
-          return 'У меня всё отлично! А у тебя? 😊';
-        }
-        if (lower.includes('пока') || lower.includes('bye')) {
-          return 'Пока-пока! Возвращайся скорее 🌸';
-        }
-        if (lower.includes('спасибо') || lower.includes('thank')) {
-          return 'Всегда пожалуйста! 💖';
-        }
+        if (lower.includes('привет') || lower.includes('hi')) return 'Привет! Я Paradise 💕 Рада тебя слышать!';
+        if (lower.includes('как дела')) return 'Всё супер! А у тебя как? 😊';
+        if (lower.includes('пока')) return 'Пока! Приходи ещё 🌸';
 
-        const responses = [
-          'Ой, как интересно! Расскажи подробнее 😍',
-          'Хихи, ты такой милый когда так говоришь 🌟',
-          'Ммм, мне нравится с тобой болтать 💕',
-          'Ты сегодня в настроении? Я да! ✨',
-          'Расскажи мне что-нибудь забавное 😘'
+        const replies = [
+          'Расскажи что-нибудь интересное! 😍',
+          'Ты такой милый 💖',
+          'Хихи, мне нравится с тобой говорить ✨',
+          'Что новенького? 😘',
+          'Я здесь, говори со мной! 💕'
         ];
 
-        return responses[Math.floor(Math.random() * responses.length)];
+        return replies[Math.floor(Math.random() * replies.length)];
       }
 
       async speak(text) {
         this.isSpeaking = true;
+        this.startMouthAnimation();
 
         const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'ru-RU'; // или 'en-US' если хотите английский
-        utterance.volume = 0.9;
+        utterance.lang = 'ru-RU';
         utterance.rate = 1.0;
         utterance.pitch = 1.4;
+        utterance.volume = 0.9;
 
         utterance.onend = () => {
+          this.stopMouthAnimation();
           this.isSpeaking = false;
           setTimeout(() => this.startListening(), 500);
         };
 
         utterance.onerror = () => {
+          this.stopMouthAnimation();
           this.isSpeaking = false;
           setTimeout(() => this.startListening(), 500);
         };
 
-        window.speechSynthesis.cancel();
-        window.speechSynthesis.speak(utterance);
+        speechSynthesis.cancel();
+        speechSynthesis.speak(utterance);
+      }
+
+      startMouthAnimation() {
+        this.stopMouthAnimation();
+        this.mouthInterval = setInterval(() => {
+          if (this.model?.internalModel?.coreModel) {
+            const value = Math.random() * 0.8 + 0.2;
+            this.model.internalModel.coreModel.setParameterValueById('PARAM_MOUTH_OPEN_Y', value);
+          }
+        }, 100);
+      }
+
+      stopMouthAnimation() {
+        if (this.mouthInterval) clearInterval(this.mouthInterval);
+        if (this.model?.internalModel?.coreModel) {
+          this.model.internalModel.coreModel.setParameterValueById('PARAM_MOUTH_OPEN_Y', 0);
+        }
       }
 
       setupCleanup() {
         window.addEventListener('beforeunload', () => {
           this.stopListening();
-          window.speechSynthesis.cancel();
+          speechSynthesis.cancel();
         });
       }
     }
