@@ -5,178 +5,104 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Компаньон с Live2D</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/pixi.js@7/dist/pixi.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display/dist/index.min.js"></script>
+    <script type="importmap">
+        {
+            "imports": {
+                "pixi.js": "https://cdn.jsdelivr.net/npm/pixi.js@8.3.4/dist/pixi.mjs",
+                "pixi-live2d-display-advanced/cubism4": "https://cdn.jsdelivr.net/npm/pixi-live2d-display-advanced@1.0.1/cubism4/index.mjs"
+            }
+        }
+    </script>
     <style>
-        body { margin: 0; font-family: Arial, sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
-        #live2d-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
-        #chat-container { position: relative; z-index: 2; flex: 1; display: flex; flex-direction: column; padding: 10px; }
-        #messages { flex: 1; overflow-y: auto; padding: 10px; }
-        .message { max-width: 80%; padding: 10px 15px; border-radius: 20px; margin: 5px 0; word-wrap: break-word; }
-        .user { align-self: flex-end; background: #0088ff; color: white; }
-        .bot { align-self: flex-start; background: #e5e5ea; color: black; }
-        #input-container { display: flex; padding: 10px; background: rgba(255,255,255,0.9); }
-        #input { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 20px; }
-        #send { margin-left: 10px; padding: 10px 20px; background: #0088ff; color: white; border: none; border-radius: 20px; }
+        body { margin: 0; overflow: hidden; height: 100vh; }
+        #live2d-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
     </style>
 </head>
 <body>
     <canvas id="live2d-canvas"></canvas>
-    <div id="chat-container">
-        <div id="messages"></div>
-        <div id="input-container">
-            <input type="text" id="input" placeholder="Напиши сообщение...">
-            <button id="send">Отправить</button>
-        </div>
-    </div>
 
-    <script>
-        // Инициализация Telegram Web App
+    <script type="module">
+        import { Application, Ticker } from 'pixi.js';
+        import { Live2DModel, MotionPriority, configureCubism4 } from 'pixi-live2d-display-advanced/cubism4';
+
         Telegram.WebApp.ready();
         Telegram.WebApp.expand();
 
-        // Тема Telegram
         const theme = Telegram.WebApp.themeParams;
         document.body.style.backgroundColor = theme.bg_color || '#ffffff';
 
-        // PIXI приложение
+        configureCubism4({ memorySizeMB: 256 });
+
         const canvas = document.getElementById('live2d-canvas');
-        const app = new PIXI.Application({
+        const app = new Application({
             view: canvas,
+            resizeTo: window,
             transparent: true,
-            resizeTo: window
+            resolution: window.devicePixelRatio || 1,
+            autoDensity: true
         });
+
+        window.addEventListener('resize', () => app.resize());
 
         let model;
-        let isTalking = false;
-        let mouthParamIndex = -1;
-
         (async () => {
-            // Загрузка модели (пример бесплатной тестовой модели Shizuku — замените на свою!)
-            model = await PIXI.live2d.Live2DModel.from('https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display@master/test/assets/shizuku/shizuku.model.json');
-
+            model = await Live2DModel.from('https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display/test3/assets/hiyori/hiyori_pro_t10.model3.json');
             app.stage.addChild(model);
 
-            // Позиция и масштаб
-            model.scale.set(0.35);
-            model.anchor.set(0.5, 1); // нижний центр
-            model.position.set(window.innerWidth / 2, window.innerHeight);
+            model.scale.set(0.2);
+            model.anchor.set(0.5, 1);
+            model.position.set(app.screen.width / 2, app.screen.height);
 
-            // Перетаскивание
-            model.buttonMode = true;
-            model.on('pointerdown', onPointerDown);
-            function onPointerDown(e) {
+            model.interactive = true;
+
+            model.on('pointerdown', (e) => {
                 model.dragging = true;
-                model.dragOffset = e.data.global.clone();
-                model.dragOffset.x -= model.x;
-                model.dragOffset.y -= model.y;
-            }
-            window.addEventListener('pointermove', (e) => {
+                model.dragOffset = e.data.getLocalPosition(model.parent);
+                model.dragOffset.x = model.x - model.dragOffset.x * model.scale.x;
+                model.dragOffset.y = model.y - model.dragOffset.y * model.scale.y;
+            });
+
+            app.stage.on('pointermove', (e) => {
                 if (model.dragging) {
-                    model.x = e.clientX - model.dragOffset.x;
-                    model.y = e.clientY - model.dragOffset.y;
-                }
-            });
-            window.addEventListener('pointerup', () => { model.dragging = false; });
-
-            // Реакция на тап
-            model.on('hit', (areas) => {
-                if (areas.includes('body') || areas.includes('head')) {
-                    model.motion('tap');
-                }
-            });
-
-            // Фоновая анимация
-            model.startRandomMotion('idle');
-
-            // Параметр рта (для большинства моделей — ParamMouthOpenY)
-            mouthParamIndex = model.internalModel.coreModel.parameters.ids.indexOf('ParamMouthOpenY');
-
-            // Анимация речи
-            function animateMouth() {
-                if (!isTalking) return;
-                const value = Math.abs(Math.sin(Date.now() / 150)) * 0.8;
-                if (mouthParamIndex !== -1) {
-                    model.internalModel.coreModel.parameters.values[mouthParamIndex] = value;
-                }
-                requestAnimationFrame(animateMouth);
-            }
-        })();
-
-        // Чат
-        const messagesDiv = document.getElementById('messages');
-        const input = document.getElementById('input');
-        const sendBtn = document.getElementById('send');
-
-        function addMessage(role, text) {
-            const div = document.createElement('div');
-            div.className = `message ${role}`;
-            div.textContent = text;
-            messagesDiv.appendChild(div);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
-        }
-
-        sendBtn.onclick = async () => {
-            const userText = input.value.trim();
-            if (!userText) return;
-            addMessage('user', userText);
-            input.value = '';
-
-            addMessage('bot', 'Думаю...');
-            if (model) {
-                isTalking = true;
-                animateMouth();
-            }
-
-            try {
-                // Замените YOUR_OPENAI_API_KEY на свой ключ!
-                const response = await fetch('https://api.openai.com/v1/chat/completions', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer YOUR_OPENAI_API_KEY'
-                    },
-                    body: JSON.stringify({
-                        model: 'gpt-4o-mini', // или gpt-3.5-turbo
-                        messages: [
-                            { role: 'system', content: 'Ты милый и дружелюбный аниме-компаньон. Отвечай на русском языке, будь игривой и заботливой.' },
-                            { role: 'user', content: userText }
-                        ],
-                        temperature: 0.8
-                    })
-                });
-
-                if (!response.ok) throw new Error('Ошибка API');
-
-                const data = await response.json();
-                const botText = data.choices[0].message.content.trim();
-
-                // Заменяем "Думаю..."
-                messagesDiv.lastChild.textContent = botText;
-
-                // Голосовой синтез
-                if ('speechSynthesis' in window) {
-                    const utterance = new SpeechSynthesisUtterance(botText);
-                    utterance.lang = 'ru-RU';
-                    utterance.rate = 1.0;
-                    utterance.onend = () => {
-                        isTalking = false;
-                        if (mouthParamIndex !== -1) model.internalModel.coreModel.parameters.values[mouthParamIndex] = 0;
-                    };
-                    speechSynthesis.speak(utterance);
+                    const pos = e.data.getLocalPosition(model.parent);
+                    model.x = pos.x * model.scale.x + model.dragOffset.x;
+                    model.y = pos.y * model.scale.y + model.dragOffset.y;
                 } else {
-                    isTalking = false;
+                    model.focus(e.data.global.x, e.data.global.y);
                 }
-            } catch (err) {
-                messagesDiv.lastChild.textContent = 'Ошибка: ' + err.message;
-                isTalking = false;
-            }
-        };
+            });
 
-        // Отправка по Enter
-        input.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') sendBtn.click();
-        });
+            app.stage.on('pointerup', () => {
+                model.dragging = false;
+            });
+
+            app.stage.on('pointerupoutside', () => {
+                model.dragging = false;
+            });
+
+            model.on('hit', (hitAreas) => {
+                if (hitAreas.includes('body')) {
+                    model.motion('tap_body', 0, MotionPriority.FORCE);
+                }
+                if (hitAreas.includes('head')) {
+                    model.expression(Math.random() > 0.5 ? 'f01' : 'f02');
+                }
+            });
+
+            app.ticker.add((delta) => {
+                model.update(delta * Ticker.shared.speed * 1000 / 60);
+            });
+
+            setInterval(() => {
+                if (!model.motionManager.isFinished()) return;
+                const group = 'idle';
+                const index = Math.floor(Math.random() * model.internalModel.settings.motions[group].length);
+                model.motion(group, index, MotionPriority.IDLE);
+            }, 5000);
+
+            model.masks.updateEveryFrame = false;
+            model.internalModel.motionManager.reservedMotions = true;
+        })();
     </script>
 </body>
 </html>
