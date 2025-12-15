@@ -1,110 +1,16 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+    >
+    <link rel="stylesheet" href="style.css">
+  </head>
+
+  <body>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script type="importmap">
-        {
-            "imports": {
-                "pixi.js": "https://cdn.jsdelivr.net/npm/pixi.js@8.3.4/dist/pixi.mjs",
-                "pixi-live2d-display": "https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/index.mjs"
-            }
-        }
-    </script>
-    <style>
-        body { margin: 0; overflow: hidden; height: 100vh; }
-        #live2d-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-    </style>
-</head>
-<body>
-    <canvas id="live2d-canvas"></canvas>
-
-    <script type="module">
-        import { Application, Ticker } from 'pixi.js';
-        import { Live2DModel, MotionPriority } from 'pixi-live2d-display';
-
-        Telegram.WebApp.ready();
-        Telegram.WebApp.expand();
-
-        let theme = Telegram.WebApp.themeParams;
-        document.body.style.backgroundColor = theme.bg_color || '#ffffff';
-
-        Telegram.WebApp.onEvent('themeChanged', () => {
-            theme = Telegram.WebApp.themeParams;
-            document.body.style.backgroundColor = theme.bg_color || '#ffffff';
-        });
-
-        const canvas = document.getElementById('live2d-canvas');
-        const app = new Application({
-            view: canvas,
-            resizeTo: window,
-            transparent: true,
-            resolution: window.devicePixelRatio || 1,
-            autoDensity: true
-        });
-
-        window.addEventListener('resize', () => app.resize());
-
-        let model;
-        (async () => {
-            model = await Live2DModel.from('https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display/test/assets/shizuku/shizuku.model.json');
-            app.stage.addChild(model);
-
-            model.scale.set(0.35);
-            model.anchor.set(0.5, 1);
-            model.position.set(app.screen.width / 2, app.screen.height);
-
-            model.interactive = true;
-
-            model.on('pointerdown', (e) => {
-                model.dragging = true;
-                model.dragOffset = e.data.getLocalPosition(model.parent);
-                model.dragOffset.x = model.x - model.dragOffset.x * model.scale.x;
-                model.dragOffset.y = model.y - model.dragOffset.y * model.scale.y;
-            });
-
-            app.stage.on('pointermove', (e) => {
-                if (model.dragging) {
-                    const pos = e.data.getLocalPosition(model.parent);
-                    model.x = pos.x * model.scale.x + model.dragOffset.x;
-                    model.y = pos.y * model.scale.y + model.dragOffset.y;
-                } else {
-                    model.focus(e.data.global.x / app.screen.width, e.data.global.y / app.screen.height);
-                }
-            });
-
-            app.stage.on('pointerup', () => {
-                model.dragging = false;
-            });
-
-            app.stage.on('pointerupoutside', () => {
-                model.dragging = false;
-            });
-
-            model.on('hit', (hitAreas) => {
-                if (hitAreas.includes('body')) {
-                    model.motion('tap_body', 0, MotionPriority.FORCE);
-                }
-                if (hitAreas.includes('head')) {
-                    model.expression();
-                }
-            });
-
-            app.ticker.add((delta) => {
-                model.update(delta);
-            });
-
-            setInterval(() => {
-                if (model.motionManager.state.currentPriority >= MotionPriority.NORMAL) return;
-                const motions = model.internalModel.settings.motions.idle;
-                if (motions) {
-                    const index = Math.floor(Math.random() * motions.length);
-                    model.motion('idle', index, MotionPriority.IDLE);
-                }
-            }, 5000);
-        })();
-    </script>
-</body>
+    <script type="module" src="app.js"></script>
+  </body>
 </html>
-``` } from
