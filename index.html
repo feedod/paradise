@@ -1,264 +1,182 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <style>
-    body {
-      margin: 0;
-      padding: 0;
-      background-color: #000000;
-      overflow: hidden;
-      touch-action: none;
-      font-family: system-ui, -apple-system, sans-serif;
-      user-select: none;
-      -webkit-user-select: none;
-      -moz-user-select: none;
-      -ms-user-select: none;
-    }
-    #canvas {
-      width: 100%;
-      height: 100%;
-      display: block;
-    }
-  </style>
-  <script src="https://telegram.org/js/telegram-web-app.js" crossorigin="anonymous"></script>
-  <script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/pixi.js@6/dist/browser/pixi.min.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display/dist/index.min.js" crossorigin="anonymous"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Компаньон с Live2D</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pixi.js@7/dist/pixi.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display/dist/index.min.js"></script>
+    <style>
+        body { margin: 0; font-family: Arial, sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+        #live2d-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+        #chat-container { position: relative; z-index: 2; flex: 1; display: flex; flex-direction: column; padding: 10px; }
+        #messages { flex: 1; overflow-y: auto; padding: 10px; }
+        .message { max-width: 80%; padding: 10px 15px; border-radius: 20px; margin: 5px 0; word-wrap: break-word; }
+        .user { align-self: flex-end; background: #0088ff; color: white; }
+        .bot { align-self: flex-start; background: #e5e5ea; color: black; }
+        #input-container { display: flex; padding: 10px; background: rgba(255,255,255,0.9); }
+        #input { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 20px; }
+        #send { margin-left: 10px; padding: 10px 20px; background: #0088ff; color: white; border: none; border-radius: 20px; }
+    </style>
 </head>
 <body>
-  <canvas id="canvas"></canvas>
+    <canvas id="live2d-canvas"></canvas>
+    <div id="chat-container">
+        <div id="messages"></div>
+        <div id="input-container">
+            <input type="text" id="input" placeholder="Напиши сообщение...">
+            <button id="send">Отправить</button>
+        </div>
+    </div>
 
-  <script>
-    'use strict';
+    <script>
+        // Инициализация Telegram Web App
+        Telegram.WebApp.ready();
+        Telegram.WebApp.expand();
 
-    class Paradise {
-      constructor() {
-        this.model = null;
-        this.app = null;
-        this.recognition = null;
-        this.mouthInterval = null;
-        this.isSpeaking = false;
-        this.isListening = false;
+        // Тема Telegram
+        const theme = Telegram.WebApp.themeParams;
+        document.body.style.backgroundColor = theme.bg_color || '#ffffff';
 
-        if (!window.Telegram?.WebApp) return;
+        // PIXI приложение
+        const canvas = document.getElementById('live2d-canvas');
+        const app = new PIXI.Application({
+            view: canvas,
+            transparent: true,
+            resizeTo: window
+        });
 
-        this.init();
-      }
+        let model;
+        let isTalking = false;
+        let mouthParamIndex = -1;
 
-      async init() {
-        try {
-          this.setupTelegram();
-          await this.setupPixiAndModel();
-          this.setupStt();
-          this.setupCleanup();
-        } catch (error) {
-          console.error('Initialization failed:', error);
-        }
-      }
+        (async () => {
+            // Загрузка модели (пример бесплатной тестовой модели Shizuku — замените на свою!)
+            model = await PIXI.live2d.Live2DModel.from('https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display@master/test/assets/shizuku/shizuku.model.json');
 
-      setupTelegram() {
-        const { WebApp } = window.Telegram;
-        WebApp.ready();
-        WebApp.expand();
-        WebApp.setHeaderColor('#000000');
-        WebApp.setBackgroundColor('#000000');
-        WebApp.disableVerticalSwipes();
+            app.stage.addChild(model);
 
-        WebApp.BackButton.show();
-        WebApp.BackButton.onClick(() => {
-          WebApp.showConfirm('Закрыть Paradise?', (confirmed) => {
-            if (confirmed) {
-              WebApp.close();
+            // Позиция и масштаб
+            model.scale.set(0.35);
+            model.anchor.set(0.5, 1); // нижний центр
+            model.position.set(window.innerWidth / 2, window.innerHeight);
+
+            // Перетаскивание
+            model.buttonMode = true;
+            model.on('pointerdown', onPointerDown);
+            function onPointerDown(e) {
+                model.dragging = true;
+                model.dragOffset = e.data.global.clone();
+                model.dragOffset.x -= model.x;
+                model.dragOffset.y -= model.y;
             }
-          });
-        });
-      }
+            window.addEventListener('pointermove', (e) => {
+                if (model.dragging) {
+                    model.x = e.clientX - model.dragOffset.x;
+                    model.y = e.clientY - model.dragOffset.y;
+                }
+            });
+            window.addEventListener('pointerup', () => { model.dragging = false; });
 
-      async setupPixiAndModel() {
-        const canvas = document.getElementById('canvas');
+            // Реакция на тап
+            model.on('hit', (areas) => {
+                if (areas.includes('body') || areas.includes('head')) {
+                    model.motion('tap');
+                }
+            });
 
-        this.app = new PIXI.Application({
-          view: canvas,
-          transparent: false,
-          backgroundColor: 0x000000,
-          resizeTo: window,
-          resolution: window.devicePixelRatio || 1,
-          autoDensity: true
-        });
+            // Фоновая анимация
+            model.startRandomMotion('idle');
 
-        const modelUrl = 'https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display/test/assets/haru/haru_greeter_t03.model3.json';
+            // Параметр рта (для большинства моделей — ParamMouthOpenY)
+            mouthParamIndex = model.internalModel.coreModel.parameters.ids.indexOf('ParamMouthOpenY');
 
-        this.model = await PIXI.live2d.Live2DModel.from(modelUrl);
-
-        this.app.stage.addChild(this.model);
-
-        this.model.scale.set(0.25);
-        this.model.anchor.set(0.5, 0.5);
-        this.updatePosition();
-
-        this.model.on('hit', (hitAreas) => {
-          if (hitAreas.length > 0) {
-            this.model.motion('Tap');
-            if (window.Telegram?.WebApp?.HapticFeedback) {
-              window.Telegram.WebApp.HapticFeedback.impactOccurred('light');
+            // Анимация речи
+            function animateMouth() {
+                if (!isTalking) return;
+                const value = Math.abs(Math.sin(Date.now() / 150)) * 0.8;
+                if (mouthParamIndex !== -1) {
+                    model.internalModel.coreModel.parameters.values[mouthParamIndex] = value;
+                }
+                requestAnimationFrame(animateMouth);
             }
-          }
-        });
+        })();
 
-        this.model.motion('Idle');
+        // Чат
+        const messagesDiv = document.getElementById('messages');
+        const input = document.getElementById('input');
+        const sendBtn = document.getElementById('send');
 
-        window.addEventListener('resize', () => this.updatePosition());
-      }
-
-      updatePosition() {
-        if (this.model && this.app) {
-          this.model.position.set(this.app.screen.width / 2, this.app.screen.height / 2);
-
-          const scale = Math.min(this.app.screen.width / this.model.width, this.app.screen.height / this.model.height) * 0.9;
-          this.model.scale.set(scale);
+        function addMessage(role, text) {
+            const div = document.createElement('div');
+            div.className = `message ${role}`;
+            div.textContent = text;
+            messagesDiv.appendChild(div);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
-      }
 
-      setupStt() {
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SpeechRecognition) return;
+        sendBtn.onclick = async () => {
+            const userText = input.value.trim();
+            if (!userText) return;
+            addMessage('user', userText);
+            input.value = '';
 
-        this.recognition = new SpeechRecognition();
-        this.recognition.continuous = false;
-        this.recognition.interimResults = false;
-        this.recognition.lang = 'ru-RU';
+            addMessage('bot', 'Думаю...');
+            if (model) {
+                isTalking = true;
+                animateMouth();
+            }
 
-        this.recognition.onresult = this.handleSpeechResult.bind(this);
-        this.recognition.onerror = this.handleSttError.bind(this);
-        this.recognition.onend = this.handleSttEnd.bind(this);
+            try {
+                // Замените YOUR_OPENAI_API_KEY на свой ключ!
+                const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer YOUR_OPENAI_API_KEY'
+                    },
+                    body: JSON.stringify({
+                        model: 'gpt-4o-mini', // или gpt-3.5-turbo
+                        messages: [
+                            { role: 'system', content: 'Ты милый и дружелюбный аниме-компаньон. Отвечай на русском языке, будь игривой и заботливой.' },
+                            { role: 'user', content: userText }
+                        ],
+                        temperature: 0.8
+                    })
+                });
 
-        setTimeout(() => this.startListening(), 2000);
-      }
+                if (!response.ok) throw new Error('Ошибка API');
 
-      startListening() {
-        if (this.recognition && !this.isListening && !this.isSpeaking) {
-          try {
-            this.recognition.start();
-            this.isListening = true;
-          } catch (e) {
-            setTimeout(() => this.startListening(), 1000);
-          }
-        }
-      }
+                const data = await response.json();
+                const botText = data.choices[0].message.content.trim();
 
-      stopListening() {
-        if (this.recognition && this.isListening) {
-          try {
-            this.recognition.abort();
-          } catch (e) {}
-          this.isListening = false;
-        }
-      }
+                // Заменяем "Думаю..."
+                messagesDiv.lastChild.textContent = botText;
 
-      handleSpeechResult(event) {
-        const transcript = event.results[0][0].transcript.trim();
-        if (transcript) {
-          this.processInput(transcript);
-        }
-      }
-
-      handleSttError() {
-        this.isListening = false;
-        setTimeout(() => this.startListening(), 1000);
-      }
-
-      handleSttEnd() {
-        this.isListening = false;
-        if (!this.isSpeaking) {
-          setTimeout(() => this.startListening(), 500);
-        }
-      }
-
-      async processInput(text) {
-        this.stopListening();
-
-        const response = this.getLocalResponse(text);
-
-        this.model.motion('Tap');
-        this.model.expression();
-
-        await this.speak(response);
-
-        this.model.motion('Idle');
-      }
-
-      getLocalResponse(input) {
-        const lower = input.toLowerCase();
-
-        if (lower.includes('привет') || lower.includes('hi')) return 'Привет! Я Paradise 💕 Рада тебя слышать!';
-        if (lower.includes('как дела')) return 'Всё супер! А у тебя как? 😊';
-        if (lower.includes('пока')) return 'Пока! Приходи ещё 🌸';
-
-        const replies = [
-          'Расскажи что-нибудь интересное! 😍',
-          'Ты такой милый 💖',
-          'Хихи, мне нравится с тобой говорить ✨',
-          'Что новенького? 😘',
-          'Я здесь, говори со мной! 💕'
-        ];
-
-        return replies[Math.floor(Math.random() * replies.length)];
-      }
-
-      async speak(text) {
-        this.isSpeaking = true;
-        this.startMouthAnimation();
-
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'ru-RU';
-        utterance.rate = 1.0;
-        utterance.pitch = 1.4;
-        utterance.volume = 0.9;
-
-        utterance.onend = () => {
-          this.stopMouthAnimation();
-          this.isSpeaking = false;
-          setTimeout(() => this.startListening(), 500);
+                // Голосовой синтез
+                if ('speechSynthesis' in window) {
+                    const utterance = new SpeechSynthesisUtterance(botText);
+                    utterance.lang = 'ru-RU';
+                    utterance.rate = 1.0;
+                    utterance.onend = () => {
+                        isTalking = false;
+                        if (mouthParamIndex !== -1) model.internalModel.coreModel.parameters.values[mouthParamIndex] = 0;
+                    };
+                    speechSynthesis.speak(utterance);
+                } else {
+                    isTalking = false;
+                }
+            } catch (err) {
+                messagesDiv.lastChild.textContent = 'Ошибка: ' + err.message;
+                isTalking = false;
+            }
         };
 
-        utterance.onerror = () => {
-          this.stopMouthAnimation();
-          this.isSpeaking = false;
-          setTimeout(() => this.startListening(), 500);
-        };
-
-        speechSynthesis.cancel();
-        speechSynthesis.speak(utterance);
-      }
-
-      startMouthAnimation() {
-        this.stopMouthAnimation();
-        this.mouthInterval = setInterval(() => {
-          if (this.model?.internalModel?.coreModel) {
-            const value = Math.random() * 0.8 + 0.2;
-            this.model.internalModel.coreModel.setParameterValueById('PARAM_MOUTH_OPEN_Y', value);
-          }
-        }, 100);
-      }
-
-      stopMouthAnimation() {
-        if (this.mouthInterval) clearInterval(this.mouthInterval);
-        if (this.model?.internalModel?.coreModel) {
-          this.model.internalModel.coreModel.setParameterValueById('PARAM_MOUTH_OPEN_Y', 0);
-        }
-      }
-
-      setupCleanup() {
-        window.addEventListener('beforeunload', () => {
-          this.stopListening();
-          speechSynthesis.cancel();
+        // Отправка по Enter
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendBtn.click();
         });
-      }
-    }
-
-    new Paradise();
-  </script>
+    </script>
 </body>
 </html>
