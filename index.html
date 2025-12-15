@@ -3,13 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Компаньон с Live2D</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script type="importmap">
         {
             "imports": {
                 "pixi.js": "https://cdn.jsdelivr.net/npm/pixi.js@8.3.4/dist/pixi.mjs",
-                "pixi-live2d-display-advanced/cubism4": "https://cdn.jsdelivr.net/npm/pixi-live2d-display-advanced@1.0.1/cubism4/index.mjs"
+                "pixi-live2d-display": "https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/index.mjs"
             }
         }
     </script>
@@ -23,15 +22,18 @@
 
     <script type="module">
         import { Application, Ticker } from 'pixi.js';
-        import { Live2DModel, MotionPriority, configureCubism4 } from 'pixi-live2d-display-advanced/cubism4';
+        import { Live2DModel, MotionPriority } from 'pixi-live2d-display';
 
         Telegram.WebApp.ready();
         Telegram.WebApp.expand();
 
-        const theme = Telegram.WebApp.themeParams;
+        let theme = Telegram.WebApp.themeParams;
         document.body.style.backgroundColor = theme.bg_color || '#ffffff';
 
-        configureCubism4({ memorySizeMB: 256 });
+        Telegram.WebApp.onEvent('themeChanged', () => {
+            theme = Telegram.WebApp.themeParams;
+            document.body.style.backgroundColor = theme.bg_color || '#ffffff';
+        });
 
         const canvas = document.getElementById('live2d-canvas');
         const app = new Application({
@@ -46,10 +48,10 @@
 
         let model;
         (async () => {
-            model = await Live2DModel.from('https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display/test3/assets/hiyori/hiyori_pro_t10.model3.json');
+            model = await Live2DModel.from('https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display/test/assets/shizuku/shizuku.model.json');
             app.stage.addChild(model);
 
-            model.scale.set(0.2);
+            model.scale.set(0.35);
             model.anchor.set(0.5, 1);
             model.position.set(app.screen.width / 2, app.screen.height);
 
@@ -68,7 +70,7 @@
                     model.x = pos.x * model.scale.x + model.dragOffset.x;
                     model.y = pos.y * model.scale.y + model.dragOffset.y;
                 } else {
-                    model.focus(e.data.global.x, e.data.global.y);
+                    model.focus(e.data.global.x / app.screen.width, e.data.global.y / app.screen.height);
                 }
             });
 
@@ -85,24 +87,24 @@
                     model.motion('tap_body', 0, MotionPriority.FORCE);
                 }
                 if (hitAreas.includes('head')) {
-                    model.expression(Math.random() > 0.5 ? 'f01' : 'f02');
+                    model.expression();
                 }
             });
 
             app.ticker.add((delta) => {
-                model.update(delta * Ticker.shared.speed * 1000 / 60);
+                model.update(delta);
             });
 
             setInterval(() => {
-                if (!model.motionManager.isFinished()) return;
-                const group = 'idle';
-                const index = Math.floor(Math.random() * model.internalModel.settings.motions[group].length);
-                model.motion(group, index, MotionPriority.IDLE);
+                if (model.motionManager.state.currentPriority >= MotionPriority.NORMAL) return;
+                const motions = model.internalModel.settings.motions.idle;
+                if (motions) {
+                    const index = Math.floor(Math.random() * motions.length);
+                    model.motion('idle', index, MotionPriority.IDLE);
+                }
             }, 5000);
-
-            model.masks.updateEveryFrame = false;
-            model.internalModel.motionManager.reservedMotions = true;
         })();
     </script>
 </body>
 </html>
+``` } from
