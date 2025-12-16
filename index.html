@@ -1,16 +1,52 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="ru">
   <head>
     <meta charset="utf-8">
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
-    >
-    <link rel="stylesheet" href="style.css">
+    <title>Аналог Airi AI на A-Frame</title>
+    <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+    <!-- Компонент для поддержки VRM-моделей -->
+    <script src="https://cdn.jsdelivr.net/gh/binzume/aframe-vrm@master/dist/aframe-vrm.min.js"></script>
   </head>
-
   <body>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script type="module" src="app.js"></script>
+    <a-scene vr-mode-ui="enabled: true" background="color: #FAFAFA" cursor="rayOrigin: mouse; fuse: true">
+      
+      <!-- Предзагрузка модели -->
+      <a-assets timeout="60000">
+        <a-asset-item id="airi-vrm" 
+                      src="https://pixiv.github.io/three-vrm/packages/three-vrm/examples/models/three-vrm-girl.vrm">
+        </a-asset-item>
+      </a-assets>
+      
+      <!-- Камера игрока (на уровне глаз) -->
+      <a-entity id="player" camera look-controls wasd-controls position="0 1.6 2">
+        <a-cursor></a-cursor>
+      </a-entity>
+      
+      <!-- Модель виртуальной девушки -->
+      <a-entity gltf-model="#airi-vrm"
+                vrm
+                position="0 0 -2"
+                scale="1.5 1.5 1.5"
+                animation-mixer
+                look-at="#player">
+      </a-entity>
+      
+      <!-- Окружение -->
+      <a-sky color="#ECECEC"></a-sky>
+      <a-plane position="0 0 -3" rotation="-90 0 0" width="20" height="20" color="#A0D8EF"></a-plane>
+      
+      <!-- Освещение -->
+      <a-light type="ambient" intensity="0.8"></a-light>
+      <a-light type="directional" position="5 10 5" intensity="0.7"></a-light>
+      
+      <!-- Приветственный текст (как начало "разговора") -->
+      <a-text value="Привет! Я твоя виртуальная подруга Airi ♡\nНажми на меня или подойди ближе."
+              position="0 1.8 -1.5"
+              align="center"
+              color="#FF66AA"
+              scale="2 2 2">
+      </a-text>
+      
+    </a-scene>
   </body>
 </html>
