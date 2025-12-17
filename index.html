@@ -3,7 +3,6 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
 <script type="importmap">
 {
   "imports": {
@@ -13,7 +12,6 @@
   }
 }
 </script>
-
 <style>
 :root {
   --bg-color: #000;
@@ -52,11 +50,7 @@ canvas {
   border-top-color: #fff;
   border-radius: 50%;
   transform: rotate(0deg);
-  animation: rotate-spin 0.1s linear infinite;
-}
-
-@keyframes rotate-spin {
-  to { transform: rotate(360deg); }
+  transition: transform 0.1s linear;
 }
 </style>
 </head>
@@ -92,9 +86,23 @@ class Utils {
 
 class EventEmitter {
   #listeners = new Map();
-  on(event, fn) { (this.#listeners.get(event) ?? this.#listeners.set(event, []).get(event)).push(fn); return this; }
-  off(event, fn) { this.#listeners.set(event, (this.#listeners.get(event) ?? []).filter(f => f !== fn)); return this; }
-  emit(event, ...args) { (this.#listeners.get(event) ?? []).forEach(fn => fn(...args)); return this; }
+  
+  on(event, fn) {
+    if (!this.#listeners.has(event)) this.#listeners.set(event, []);
+    this.#listeners.get(event).push(fn);
+    return this;
+  }
+
+  off(event, fn) {
+    if (!this.#listeners.has(event)) return this;
+    this.#listeners.set(event, this.#listeners.get(event).filter(f => f !== fn));
+    return this;
+  }
+
+  emit(event, ...args) {
+    (this.#listeners.get(event) ?? []).forEach(fn => fn(...args));
+    return this;
+  }
 }
 
 class Renderer3D extends EventEmitter {
@@ -150,33 +158,35 @@ class VRMAvatar extends EventEmitter {
     this.eyeTarget = new THREE.Vector2();
     this.headTilt = new THREE.Vector2();
     this.progressSpin = progressSpin;
+    this.targetRotation = 0;
+    this.currentRotation = 0;
   }
 
   async load(url) {
     const loader = new GLTFLoader();
-    loader.register(parser => new VRMLoaderPlugin(parser));
+    loader.register((parser) => new VRMLoaderPlugin(parser));
 
     const gltf = await new Promise((resolve, reject) => {
       loader.load(url,
         gltf => resolve(gltf),
         progress => {
           if (progress.total) {
-            const percent = Math.min((progress.loaded / progress.total) * 360, 360);
-            this.progressSpin.style.transform = `rotate(${percent}deg)`;
+            const percent = (progress.loaded / progress.total) * 360;
+            this.targetRotation = percent;
           }
         },
         err => reject(err)
       );
     });
 
-    if (!gltf.userData.vrm) throw new Error('VRM not found');
+    const vrm = gltf.userData.vrm || gltf.userData.VRM;
+    if (!vrm) throw new Error('VRM not found');
 
     VRMUtils.removeUnnecessaryVertices(gltf.scene);
     VRMUtils.combineSkeletons(gltf.scene);
-    VRMUtils.combineMorphs(gltf.userData.vrm);
+    VRMUtils.combineMorphs(vrm);
 
-    this.vrm = gltf.userData.vrm;
-
+    this.vrm = vrm;
     this.vrm.scene.position.set(0, -1, 0);
     this.vrm.scene.rotation.y = Math.PI;
 
@@ -215,6 +225,11 @@ class VRMAvatar extends EventEmitter {
       head.rotation.y = Utils.lerp(head.rotation.y, this.headTilt.x, dt * lerpFactor);
       head.rotation.x = Utils.lerp(head.rotation.x, this.headTilt.y, dt * lerpFactor);
     }
+
+    if (this.progressSpin) {
+      this.currentRotation = Utils.lerp(this.currentRotation, this.targetRotation, 0.1);
+      this.progressSpin.style.transform = `rotate(${this.currentRotation}deg)`;
+    }
   }
 }
 
@@ -232,7 +247,8 @@ class ParadiseAI {
   }
 
   hideLoader() {
-    document.getElementById('loader').remove();
+    const loader = document.getElementById('loader');
+    if (loader) loader.remove();
   }
 
   initTouchControls() {
