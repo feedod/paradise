@@ -9,24 +9,16 @@ TG?.expand();
 const CONFIG = Object.freeze({
   MODEL: 'https://edsandbox.bluemarble.in/three.js-master/examples/models/vrm/Alicia/AliciaSolid.vrm',
   LANG: 'ru-RU',
-  WAKE: 'парадайз',
   CAMERA: { fov: 35, near: 0.1, far: 100, pos: [0, 1.45, 1.9] },
   PIXEL_RATIO: 1.5,
   BREATH: { speed: 0.6, amp: 0.015 },
   BLINK: { min: 3, max: 7 },
   LIPSYNC: { gain: 4.2, smooth: 0.15 },
-  GAZE: { speed: 2.5 },
-  MEMORY_KEY: 'paradiseai.memory.v1'
 });
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 const rand = (a, b) => a + Math.random() * (b - a);
-
-class FSM {
-  state = 'boot';
-  set(s) { this.state = s; }
-}
 
 class Emotion {
   valence = 0;
@@ -40,36 +32,6 @@ class Emotion {
   update(dt) {
     this.valence = lerp(this.valence, this.tv, dt * 3);
     this.arousal = lerp(this.arousal, this.ta, dt * 3);
-  }
-}
-
-class Memory {
-  short = [];
-  long = [];
-  constructor() {
-    try {
-      const raw = localStorage.getItem(CONFIG.MEMORY_KEY);
-      if (raw) this.long = JSON.parse(raw);
-    } catch {}
-    if (!this.long.length) {
-      this.long = [
-        'Ты ParadiseAI — тёплая, заботливая, живая.',
-        'Ты говоришь мягко, эмоционально и по-человечески.'
-      ];
-    }
-  }
-  push(text) {
-    this.short.push(text);
-    if (this.short.length > 20) this.short.shift();
-    this.persist();
-  }
-  persist() {
-    try {
-      localStorage.setItem(CONFIG.MEMORY_KEY, JSON.stringify(this.long.concat(this.short)));
-    } catch {}
-  }
-  context() {
-    return [...this.long, ...this.short].join('\n');
   }
 }
 
@@ -88,22 +50,37 @@ class Renderer {
     this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, CONFIG.PIXEL_RATIO));
     this.renderer.setSize(innerWidth, innerHeight);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.domElement.className = 'paradise-canvas';
 
+    Object.assign(this.renderer.domElement.style, {
+      position: 'fixed',
+      inset: '0',
+      width: '100%',
+      height: '100%',
+      display: 'block',
+      touchAction: 'none',
+    });
+
+    document.body.style.margin = '0';
+    document.body.style.width = '100%';
+    document.body.style.height = '100%';
+    document.body.style.overflow = 'hidden';
+    document.body.style.backgroundColor = '#000';
     document.body.append(this.renderer.domElement);
 
-    this.scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-    const d = new THREE.DirectionalLight(0xffffff, 1.2);
-    d.position.set(1, 2, 1.5);
-    this.scene.add(d);
+    const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+    const directional = new THREE.DirectionalLight(0xffffff, 1.2);
+    directional.position.set(1, 2, 1.5);
+    this.scene.add(ambient, directional);
 
     addEventListener('resize', () => this.resize(), { passive: true });
   }
+
   resize() {
     this.camera.aspect = innerWidth / innerHeight;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(innerWidth, innerHeight);
   }
+
   render() {
     this.renderer.render(this.scene, this.camera);
   }
@@ -118,6 +95,7 @@ class Avatar {
     this.blink = 0;
     this.nextBlink = rand(CONFIG.BLINK.min, CONFIG.BLINK.max);
   }
+
   async load(url) {
     const loader = new GLTFLoader();
     loader.register(p => new VRMLoaderPlugin(p));
@@ -129,21 +107,24 @@ class Avatar {
     this.vrm.scene.position.set(0, -1.1, 0);
     this.scene.add(this.vrm.scene);
   }
+
   set(name, v) {
     this.vrm?.expressionManager?.setValue(name, v);
   }
+
   update(dt, emotion, mouth, speaking) {
     if (!this.vrm) return;
     this.time += dt;
     this.vrm.update(dt);
 
     const chest = this.vrm.humanoid.getNormalizedBoneNode('chest');
-    chest.position.y = Math.sin(this.time * CONFIG.BREATH.speed) * CONFIG.BREATH.amp * (1 + emotion.arousal);
+    if (chest) chest.position.y = Math.sin(this.time * CONFIG.BREATH.speed) * CONFIG.BREATH.amp * (1 + emotion.arousal);
 
     const head = this.vrm.humanoid.getNormalizedBoneNode('head');
-    const target = new THREE.Vector3().copy(this.camera.position).normalize();
-    head.rotation.y = lerp(head.rotation.y, target.x * 0.2 * emotion.valence, dt * CONFIG.GAZE.speed);
-    head.rotation.x = lerp(head.rotation.x, target.y * 0.1, dt * CONFIG.GAZE.speed);
+    if (head) {
+      head.rotation.y = lerp(head.rotation.y, 0, dt * 2.5);
+      head.rotation.x = lerp(head.rotation.x, 0, dt * 2.5);
+    }
 
     if (!speaking) {
       this.blink += dt;
@@ -173,6 +154,7 @@ class AudioInput {
     this.data = new Uint8Array(this.analyser.fftSize);
     src.connect(this.analyser);
   }
+
   update() {
     this.analyser.getByteTimeDomainData(this.data);
     let sum = 0;
@@ -181,21 +163,21 @@ class AudioInput {
       sum += n * n;
     }
     const rms = Math.sqrt(sum / this.data.length);
-    this.level = lerp(this.level, rms, CONFIG.LIPSYNC.smooth);
-    return clamp(this.level * CONFIG.LIPSYNC.gain, 0, 1);
+    this.level = lerp(this.level, rms, 0.15);
+    return clamp(this.level * 4.2, 0, 1);
   }
 }
 
 class ParadiseAI {
   constructor() {
-    this.fsm = new FSM();
     this.emotion = new Emotion();
-    this.memory = new Memory();
     this.renderer = new Renderer();
     this.avatar = new Avatar(this.renderer.scene, this.renderer.camera);
     this.audio = new AudioInput();
     this.clock = new THREE.Clock();
+    this.speaking = false;
   }
+
   async start() {
     try {
       await this.audio.init();
@@ -204,19 +186,21 @@ class ParadiseAI {
       TG?.close();
       return;
     }
+
     await this.avatar.load(CONFIG.MODEL);
-    this.fsm.set('idle');
     this.loop();
   }
+
   loop() {
     requestAnimationFrame(() => this.loop());
     const dt = this.clock.getDelta();
 
     this.emotion.update(dt);
-    if (this.fsm.state === 'idle') this.emotion.set(0.1, 0.2);
+    this.emotion.set(0.1, 0.2);
 
     const mouth = this.audio.update();
-    this.avatar.update(dt, this.emotion, mouth, this.fsm.state === 'speaking');
+    this.avatar.update(dt, this.emotion, mouth, this.speaking);
+
     this.renderer.render();
   }
 }
