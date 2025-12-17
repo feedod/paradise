@@ -100,7 +100,7 @@ class VRMAvatar {
             }
           }
           vrmBlob = new Blob(chunks);
-          await cache.put(url, new Response(vrmBlob));
+          await cache.put(url,new Response(vrmBlob));
           if(TG) TG.MainButton.hide();
         }
       } else {
@@ -111,9 +111,10 @@ class VRMAvatar {
 
       const blobUrl = URL.createObjectURL(vrmBlob);
       const loader = new GLTFLoader();
-      loader.register(p => new VRMLoaderPlugin(p));
+      loader.register(parser => new VRMLoaderPlugin(parser));
       const gltf = await loader.loadAsync(blobUrl);
-      if (!gltf.userData.vrm) throw new Error('VRM не найден');
+      if (!gltf.scene) throw new Error('VRM сцена не найдена');
+      if (!gltf.userData.vrm) throw new Error('VRM объект не найден');
 
       VRMUtils.removeUnnecessaryVertices(gltf.scene);
       VRMUtils.removeUnnecessaryJoints(gltf.scene);
