@@ -10,7 +10,7 @@ const DEVICE_MEMORY = navigator.deviceMemory || 1;
 const LOW_PERFORMANCE = DEVICE_MEMORY <= 2;
 
 const CONFIG = Object.freeze({
-  MODEL_URL: 'https://cdn.jsdelivr.net/gh/pixiv/three-vrm@3.4.4/examples/models/AliciaSolid.vrm',
+  MODEL_URL: 'https://rawcdn.githack.com/pixiv/three-vrm/3.4.4/examples/models/AliciaSolid.vrm',
   CAMERA: { fov: 35, near: 0.1, far: 100, position: [0, 1.45, 1.9] },
   PIXEL_RATIO: LOW_PERFORMANCE ? 1 : Math.min(window.devicePixelRatio || 1, 2),
   BREATH: { speed: LOW_PERFORMANCE ? 0.25 : 0.6, amp: LOW_PERFORMANCE ? 0.008 : 0.015 },
@@ -115,9 +115,14 @@ class VRMAvatar {
 
   async load(url) {
     try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('VRM файл недоступен или CORS запрещён');
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+
       const loader = new GLTFLoader();
       loader.register(p => new VRMLoaderPlugin(p));
-      const gltf = await loader.loadAsync(url);
+      const gltf = await loader.loadAsync(blobUrl);
 
       VRMUtils.removeUnnecessaryVertices(gltf.scene);
       VRMUtils.removeUnnecessaryJoints(gltf.scene);
