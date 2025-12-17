@@ -1,40 +1,175 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <script src="https://aframe.io/releases/1.6.1/aframe.min.js"></script>
-    <style>
-        body { margin: 0; overflow: hidden; background: #000; }
-    </style>
+  <meta charset="UTF-8">
+  <meta
+    name="viewport"
+    content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"
+  >
+
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+
+  <style>
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      background-color: #000;
+      overflow: hidden;
+    }
+  </style>
 </head>
+
 <body>
-    <a-scene embedded style="width: 100vw; height: 100vh;" background="color: #000000">
-        <a-assets>
-            <!-- Замените ссылку на свою модель от Ready Player Me (https://readyplayer.me) -->
-            <!-- Как получить: создайте аватар (можно в аниме-стиле), в URL будет ID, например 64f4f11b5a7b7b5b5f0a5b5e -->
-            <!-- Полная ссылка: https://models.readyplayer.me/ВАШ_ID.glb -->
-            <!-- Пример ниже — стандартный аватар Ready Player Me (полнотелый, с humanoid-анимациями включая Idle) -->
-            <a-asset-item id="character-model" src="https://models.readyplayer.me/6185a4acfb622cf1cdc49348.glb"></a-asset-item>
-        </a-assets>
 
-        <!-- Освещение (мягкое, чтобы модель выглядела красиво на чёрном фоне) -->
-        <a-entity light="type: ambient; intensity: 0.9; color: #ffffff"></a-entity>
-        <a-entity light="type: directional; intensity: 0.8; color: #ffffff" position="2 4 3"></a-entity>
+<a-scene
+  embedded
+  background="color:#000"
+  renderer="colorManagement:true"
+>
 
-        <!-- Персонаж по центру, смотрит на камеру, с idle-анимацией -->
-        <a-entity id="airi"
-                  gltf-model="#character-model"
-                  position="0 0 -2"
-                  rotation="0 180 0"
-                  scale="2 2 2"
-                  animation-mixer="clip: Idle; loop: repeat; timeScale: 1; repetitions: Infinity">
-        </a-entity>
+  <a-entity position="0 1.6 2.6">
+    <a-camera fov="45"></a-camera>
+  </a-entity>
 
-        <!-- Камера (управление взглядом/тачем для мобильных в Telegram Web App) -->
-        <a-camera position="0 1.6 0"
-                  look-controls="touchEnabled: true; mouseEnabled: false; reverseTouchDrag: true">
-        </a-camera>
-    </a-scene>
+  <a-light type="ambient" intensity="0.35"></a-light>
+  <a-light type="directional" position="0 2 2" intensity="1.1"></a-light>
+  <a-light type="point" position="0 1 -1.5" intensity="1.3" color="#5fdcff"></a-light>
+
+  <a-entity
+    id="paradise-avatar"
+    gltf-model="avatar.glb"
+    position="0 0 -1.2"
+    rotation="0 180 0"
+    scale="1 1 1"
+    paradise-controller
+  ></a-entity>
+
+</a-scene>
+
+<script>
+Telegram.WebApp.expand()
+
+AFRAME.registerComponent("paradise-controller", {
+  init() {
+    this.elapsedTimeMs = 0
+    this.isSpeaking = false
+
+    this.blinkValue = 0
+    this.blinkTarget = 0
+    this.nextBlinkDelayMs = this.randomBlinkDelay()
+
+    this.lookCurrent = new THREE.Vector3()
+    this.lookTarget = new THREE.Vector3()
+  },
+
+  tick(_, deltaMs) {
+    this.elapsedTimeMs += deltaMs
+
+    this.updateBlink(deltaMs)
+    this.updateTransform()
+    this.updateGaze()
+  },
+
+  randomBlinkDelay() {
+    return 2500 + Math.random() * 6000
+  },
+
+  updateBlink(deltaMs) {
+    this.nextBlinkDelayMs -= deltaMs
+
+    if (this.nextBlinkDelayMs <= 0) {
+      this.blinkTarget = 1
+      this.nextBlinkDelayMs = this.randomBlinkDelay()
+    }
+
+    this.blinkValue += (this.blinkTarget - this.blinkValue) * 0.18
+
+    if (this.blinkValue > 0.9) {
+      this.blinkTarget = 0
+    }
+  },
+
+  updateTransform() {
+    const object3D = this.el.object3D
+
+    const breathScale =
+      1 + Math.sin(this.elapsedTimeMs / 900) * 0.014
+
+    const idleYawDeg =
+      Math.sin(this.elapsedTimeMs / 3200) * 2
+
+    const speakingPitchDeg =
+      this.isSpeaking
+        ? Math.sin(this.elapsedTimeMs / 120) * 2
+        : 0
+
+    const blinkScaleY =
+      1 - this.blinkValue * 0.12
+
+    object3D.scale.set(
+      breathScale,
+      breathScale * blinkScaleY,
+      breathScale
+    )
+
+    object3D.rotation.set(
+      THREE.MathUtils.degToRad(speakingPitchDeg),
+      THREE.MathUtils.degToRad(180 + idleYawDeg),
+      0
+    )
+  },
+
+  updateGaze() {
+    const camera = AFRAME.scenes[0]?.camera
+    if (!camera) return
+
+    this.lookTarget.copy(camera.position)
+    this.lookCurrent.lerp(this.lookTarget, 0.04)
+    this.el.object3D.lookAt(this.lookCurrent)
+  }
+})
+
+const avatarElement = document.getElementById("paradise-avatar")
+
+function speakText(text) {
+  if (!("speechSynthesis" in window)) return
+
+  const utterance = new SpeechSynthesisUtterance(text)
+  utterance.lang = "ru-RU"
+  utterance.rate = 0.95
+  utterance.pitch = 1.05
+
+  utterance.onstart = () => {
+    avatarElement.components["paradise-controller"].isSpeaking = true
+  }
+
+  utterance.onend = () => {
+    avatarElement.components["paradise-controller"].isSpeaking = false
+  }
+
+  window.speechSynthesis.cancel()
+  window.speechSynthesis.speak(utterance)
+}
+
+const PARADISE_PHRASES = [
+  "Добро пожаловать.",
+  "Здесь не нужно спешить.",
+  "Paradise — это состояние.",
+  "Я рядом.",
+  "Можно просто быть."
+]
+
+setInterval(() => {
+  const phrase =
+    PARADISE_PHRASES[
+      Math.floor(Math.random() * PARADISE_PHRASES.length)
+    ]
+  speakText(phrase)
+}, 15000)
+</script>
+
 </body>
 </html>
