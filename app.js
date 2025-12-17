@@ -10,7 +10,7 @@ const DEVICE_MEMORY = navigator.deviceMemory || 1;
 const LOW_PERFORMANCE = DEVICE_MEMORY <= 2;
 
 const CONFIG = Object.freeze({
-  MODEL_URL: 'https://edsandbox.bluemarble.in/three.js-master/examples/models/vrm/Alicia/AliciaSolid.vrm',
+  MODEL_URL: 'https://cdn.jsdelivr.net/gh/pixiv/three-vrm@3.4.4/examples/models/AliciaSolid.vrm',
   CAMERA: { fov: 35, near: 0.1, far: 100, position: [0, 1.45, 1.9] },
   PIXEL_RATIO: LOW_PERFORMANCE ? 1 : Math.min(window.devicePixelRatio || 1, 2),
   BREATH: { speed: LOW_PERFORMANCE ? 0.25 : 0.6, amp: LOW_PERFORMANCE ? 0.008 : 0.015 },
@@ -44,7 +44,6 @@ class EmotionController {
 class Renderer3D {
   constructor() {
     this.scene = new THREE.Scene();
-
     this.camera = new THREE.PerspectiveCamera(
       CONFIG.CAMERA.fov,
       window.innerWidth / window.innerHeight,
@@ -135,8 +134,9 @@ class VRMAvatar {
       this.vrm.scene.position.set(0, -1.1, 0);
       this.scene.add(this.vrm.scene);
     } catch (e) {
-      console.error('VRM load error:', e);
-      TG?.showAlert('Не удалось загрузить аватар');
+      console.error('Ошибка загрузки VRM:', e);
+      TG?.showAlert('Не удалось загрузить аватар. Попробуйте позже.');
+      TG?.close();
     }
   }
 
