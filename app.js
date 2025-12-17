@@ -10,7 +10,7 @@ TG?.ready();
 TG?.expand();
 
 const CONFIG = Object.freeze({
-  MODEL: 'https://pixiv.github.io/three-vrm/models/AliciaSolid.vrm',
+  MODEL: 'https://edsandbox.bluemarble.in/three.js-master/examples/models/vrm/Alicia/AliciaSolid.vrm',
   LANG: 'ru-RU',
   WAKE: 'айри',
   CAMERA: { fov: 35, near: 0.1, far: 100, pos: [0, 1.45, 1.9] },
