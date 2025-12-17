@@ -1,292 +1,287 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<script type="importmap">
-{
-  "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/",
-    "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3/lib/three-vrm.module.min.js"
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/",
+      "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3/lib/three-vrm.module.min.js"
+    }
   }
-}
-</script>
-<style>
-:root {
-  --bg-color: #000;
-  --loader-size: 64px;
-  --loader-border: 6px;
-}
-
-html, body {
-  margin: 0;
-  padding: 0;
-  width: 100%;
-  height: 100%;
-  background-color: var(--bg-color);
-  overflow: hidden;
-  font-family: system-ui, sans-serif;
-}
-
-canvas {
-  display: block;
-}
-
-#loader {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  background-color: var(--bg-color);
-  z-index: 100;
-}
-
-#progress-spin {
-  width: var(--loader-size);
-  height: var(--loader-size);
-  border: var(--loader-border) solid rgba(255,255,255,0.1);
-  border-top-color: #fff;
-  border-radius: 50%;
-  transform: rotate(0deg);
-  transition: transform 0.1s linear;
-}
-</style>
+  </script>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #000;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    #loader {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: #000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 2;
+    }
+    .loader-spinner {
+      width: 24px;
+      height: 24px;
+      border: 2px solid rgba(255, 255, 255, 0.1);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
 </head>
 <body>
-<main id="app">
   <div id="loader">
-    <div id="progress-spin"></div>
+    <div class="loader-spinner"></div>
   </div>
-</main>
 
-<script type="module">
-import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 
-class Config {
-  static LOW_PERFORMANCE = (navigator.deviceMemory || 1) <= 2;
-  static MODEL_URL = './models/VRM1_Constraint_Twist_Sample.vrm';
-  static CAMERA = { fov: 35, near: 0.1, far: 20, position: [0, 1.5, 3] };
-  static PIXEL_RATIO = Config.LOW_PERFORMANCE ? 1 : Math.min(window.devicePixelRatio || 1, 2);
-  static BREATH = { speed: Config.LOW_PERFORMANCE ? 0.25 : 0.6, amp: Config.LOW_PERFORMANCE ? 0.008 : 0.015 };
-  static BLINK_INTERVAL = { min: Config.LOW_PERFORMANCE ? 8 : 3, max: Config.LOW_PERFORMANCE ? 15 : 7 };
-  static MAX_FPS = Config.LOW_PERFORMANCE ? 25 : 60;
-  static HEAD_TILT_FACTOR = 0.25;
-}
+    class AIAvatar {
+      constructor() {
+        this.scene = new THREE.Scene();
+        this.clock = new THREE.Clock();
+        this.vrm = null;
 
-class Utils {
-  static clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
-  static lerp(a, b, t) { return a + (b - a) * t; }
-  static rand(min, max) { return min + Math.random() * (max - min); }
-}
+        this.input = { x: 0, y: 0 };
+        this.eyeTarget = new THREE.Vector3(0, 1.6, -3);
+        this.headTarget = new THREE.Quaternion();
+        this.blinkTimer = 0;
+        this.nextBlink = 0;
+        this.breathPhase = 0;
 
-class EventEmitter {
-  #listeners = new Map();
-  
-  on(event, fn) {
-    if (!this.#listeners.has(event)) this.#listeners.set(event, []);
-    this.#listeners.get(event).push(fn);
-    return this;
-  }
+        this.idleTime = 0;
+        this.idleTarget = new THREE.Vector2(0, 0);
 
-  off(event, fn) {
-    if (!this.#listeners.has(event)) return this;
-    this.#listeners.set(event, this.#listeners.get(event).filter(f => f !== fn));
-    return this;
-  }
+        this.init();
+      }
 
-  emit(event, ...args) {
-    (this.#listeners.get(event) ?? []).forEach(fn => fn(...args));
-    return this;
-  }
-}
+      async init() {
+        await this.setupRenderer();
+        await this.setupScene();
+        await this.loadModel();
+        this.setupInput();
+        this.hideLoader();
+        this.animate();
+      }
 
-class Renderer3D extends EventEmitter {
-  constructor(container) {
-    super();
-    this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(
-      Config.CAMERA.fov,
-      window.innerWidth / window.innerHeight,
-      Config.CAMERA.near,
-      Config.CAMERA.far
-    );
-    this.camera.position.set(...Config.CAMERA.position);
+      async setupRenderer() {
+        this.camera = new THREE.PerspectiveCamera(
+          40,
+          window.innerWidth / window.innerHeight,
+          0.1,
+          100
+        );
+        this.camera.position.set(0, 1.2, 2.2);
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: !Config.LOW_PERFORMANCE, alpha: true });
-    this.renderer.setPixelRatio(Config.PIXEL_RATIO);
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.toneMapping = THREE.NoToneMapping;
-    container.appendChild(this.renderer.domElement);
+        this.renderer = new THREE.WebGLRenderer({
+          antialias: true,
+          alpha: true,
+          powerPreference: 'high-performance'
+        });
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+        this.renderer.shadowMap.enabled = true;
+        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-    this.controls.screenSpacePanning = true;
-    this.controls.target.set(0, 1, 0);
-    this.controls.update();
+        document.body.appendChild(this.renderer.domElement);
+        window.addEventListener('resize', () => this.onResize());
+      }
 
-    const ambient = new THREE.AmbientLight(0xffffff, 0.5);
-    const directional = new THREE.DirectionalLight(0xffffff, 1.2);
-    directional.position.set(1, 2, 1.5);
-    this.scene.add(ambient, directional);
+      async setupScene() {
+        const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+        this.scene.add(ambient);
 
-    window.addEventListener('resize', () => this.resize(), { passive: true });
-  }
+        const mainLight = new THREE.DirectionalLight(0xffffff, 1.0);
+        mainLight.position.set(2, 4, 2);
+        mainLight.castShadow = true;
+        mainLight.shadow.mapSize.width = 1024;
+        mainLight.shadow.mapSize.height = 1024;
+        mainLight.shadow.camera.near = 0.5;
+        mainLight.shadow.camera.far = 50;
+        this.scene.add(mainLight);
 
-  resize() {
-    this.camera.aspect = window.innerWidth / window.innerHeight;
-    this.camera.updateProjectionMatrix();
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.emit('resize');
-  }
+        const rimLight = new THREE.DirectionalLight(0xffffff, 0.3);
+        rimLight.position.set(-2, 2, -2);
+        this.scene.add(rimLight);
+      }
 
-  render() { this.renderer.render(this.scene, this.camera); }
-}
+      async loadModel() {
+        return new Promise((resolve, reject) => {
+          const loader = new GLTFLoader();
+          loader.register((parser) => new VRMLoaderPlugin(parser));
+          loader.load(
+            './VRM1_Constraint_Twist_Sample.vrm',
+            (gltf) => {
+              this.vrm = gltf.userData.vrm;
+              if (!this.vrm) {
+                reject(new Error('Invalid VRM model'));
+                return;
+              }
+              VRMUtils.removeUnnecessaryVertices(gltf.scene);
+              VRMUtils.removeUnnecessaryJoints(gltf.scene);
+              this.vrm.scene.position.set(0, -1.0, 0);
+              this.setupLookAt();
+              this.scene.add(this.vrm.scene);
+              this.nextBlink = THREE.MathUtils.randFloat(2, 6);
+              resolve();
+            },
+            (progress) => {
+              const percent = Math.round((progress.loaded / progress.total) * 100);
+              document.getElementById('loader').style.opacity = 1 - percent / 100;
+            },
+            (error) => reject(error)
+          );
+        });
+      }
 
-class VRMAvatar extends EventEmitter {
-  constructor(scene, progressSpin) {
-    super();
-    this.scene = scene;
-    this.vrm = null;
-    this.blinkTimer = 0;
-    this.nextBlink = Utils.rand(Config.BLINK_INTERVAL.min, Config.BLINK_INTERVAL.max);
-    this.breathOffset = Math.random() * Math.PI * 2;
-    this.eyeTarget = new THREE.Vector2();
-    this.headTilt = new THREE.Vector2();
-    this.progressSpin = progressSpin;
-    this.targetRotation = 0;
-    this.currentRotation = 0;
-  }
+      setupLookAt() {
+        if (!this.vrm?.lookAt) return;
 
-  async load(url) {
-    const loader = new GLTFLoader();
-    loader.register((parser) => new VRMLoaderPlugin(parser));
+        this.lookAtTarget = new THREE.Object3D();
+        this.lookAtTarget.position.set(0, 1.5, -3);
+        this.scene.add(this.lookAtTarget);
+        this.vrm.lookAt.target = this.lookAtTarget;
+      }
 
-    const gltf = await new Promise((resolve, reject) => {
-      loader.load(url,
-        gltf => resolve(gltf),
-        progress => {
-          if (progress.total) {
-            const percent = (progress.loaded / progress.total) * 360;
-            this.targetRotation = percent;
-          }
-        },
-        err => reject(err)
-      );
-    });
+      setupInput() {
+        const onMove = (x, y) => {
+          this.input.x = (x / window.innerWidth) * 2 - 1;
+          this.input.y = -((y / window.innerHeight) * 2 - 1);
+          this.idleTime = 0;
+        };
 
-    const vrm = gltf.userData.vrm || gltf.userData.VRM;
-    if (!vrm) throw new Error('VRM not found');
+        const onEnd = () => {
+          this.input.x = 0;
+          this.input.y = 0;
+        };
 
-    VRMUtils.removeUnnecessaryVertices(gltf.scene);
-    VRMUtils.combineSkeletons(gltf.scene);
-    VRMUtils.combineMorphs(vrm);
+        const pointerEvents = [
+          { type: 'touchstart', getXY: (e) => [e.touches[0].clientX, e.touches[0].clientY] },
+          { type: 'touchmove', getXY: (e) => [e.touches[0].clientX, e.touches[0].clientY] },
+          { type: 'touchend', getXY: () => null },
+          { type: 'mousedown', getXY: (e) => [e.clientX, e.clientY] },
+          { type: 'mousemove', getXY: (e) => (e.buttons === 1 ? [e.clientX, e.clientY] : null) },
+          { type: 'mouseup', getXY: () => null }
+        ];
 
-    this.vrm = vrm;
-    this.vrm.scene.position.set(0, -1, 0);
-    this.vrm.scene.rotation.y = Math.PI;
+        pointerEvents.forEach((evt) => {
+          document.addEventListener(evt.type, (e) => {
+            if (evt.getXY(e)) onMove(...evt.getXY(e));
+            else if (evt.type === 'mouseup' || evt.type === 'touchend') onEnd();
+            if (e.cancelable) e.preventDefault();
+          }, { passive: false });
+        });
 
-    const bbox = new THREE.Box3().setFromObject(this.vrm.scene);
-    const size = new THREE.Vector3();
-    bbox.getSize(size);
-    const maxDim = Math.max(size.x, size.y, size.z);
-    const scaleFactor = 2 / maxDim;
-    this.vrm.scene.scale.setScalar(scaleFactor);
+        this.idleTarget.set(
+          THREE.MathUtils.randFloat(-0.3, 0.3),
+          THREE.MathUtils.randFloat(-0.2, 0.2)
+        );
+      }
 
-    this.vrm.scene.traverse(obj => obj.frustumCulled = false);
-    this.scene.add(this.vrm.scene);
-    this.emit('loaded', this.vrm);
-  }
+      updateIdleMovement(deltaTime) {
+        this.idleTime += deltaTime;
+        if (this.idleTime > 5) {
+          this.idleTarget.set(
+            THREE.MathUtils.randFloat(-0.3, 0.3),
+            THREE.MathUtils.randFloat(-0.2, 0.2)
+          );
+          this.idleTime = 0;
+        }
+        const idleX = THREE.MathUtils.lerp(this.input.x, this.idleTarget.x, Math.min(this.idleTime * 0.5, 1));
+        const idleY = THREE.MathUtils.lerp(this.input.y, this.idleTarget.y, Math.min(this.idleTime * 0.5, 1));
+        return { x: idleX, y: idleY };
+      }
 
-  setExpression(name, value) {
-    this.vrm?.blendShapeProxy?.setValue(name, value);
-  }
+      updateBreathing(deltaTime) {
+        this.breathPhase += deltaTime * 0.5;
+        const chest = this.vrm?.humanoid?.getNormalizedBoneNode('chest');
+        if (chest) chest.position.y = Math.sin(this.breathPhase) * 0.008;
+      }
 
-  update(dt) {
-    if (!this.vrm) return;
-    this.blinkTimer += dt;
-    if (this.blinkTimer > this.nextBlink) {
-      this.setExpression('blink', 1);
-      setTimeout(() => this.setExpression('blink', 0), 120);
-      this.blinkTimer = 0;
-      this.nextBlink = Utils.rand(Config.BLINK_INTERVAL.min, Config.BLINK_INTERVAL.max);
+      updateBlink(deltaTime) {
+        this.blinkTimer += deltaTime;
+        if (this.blinkTimer >= this.nextBlink && this.vrm?.expressionManager) {
+          this.vrm.expressionManager.setValue('blink', 1);
+          setTimeout(() => this.vrm?.expressionManager?.setValue('blink', 0), 100);
+          this.blinkTimer = 0;
+          this.nextBlink = THREE.MathUtils.randFloat(2, 6);
+        }
+      }
+
+      updateLookAt(deltaTime, inputX, inputY) {
+        if (!this.vrm?.lookAt || !this.lookAtTarget) return;
+
+        this.eyeTarget.x = THREE.MathUtils.lerp(this.eyeTarget.x, inputX * 1.5, 0.2 * deltaTime * 60);
+        this.eyeTarget.y = THREE.MathUtils.lerp(this.eyeTarget.y, 1.6 + inputY * 0.5, 0.2 * deltaTime * 60);
+        this.lookAtTarget.position.lerp(this.eyeTarget, 0.2 * deltaTime * 60);
+
+        const headRotation = new THREE.Quaternion().setFromEuler(
+          new THREE.Euler(inputY * 0.2, inputX * 0.3, 0, 'XYZ')
+        );
+        this.headTarget.slerp(headRotation, 0.1 * deltaTime * 60);
+
+        this.vrm.lookAt.update(deltaTime);
+      }
+
+      update(deltaTime) {
+        if (!this.vrm) return;
+        const input = this.input.x === 0 && this.input.y === 0 ? this.updateIdleMovement(deltaTime) : this.input;
+        this.updateBreathing(deltaTime);
+        this.updateBlink(deltaTime);
+        this.updateLookAt(deltaTime, input.x, input.y);
+        this.vrm.update(deltaTime);
+      }
+
+      hideLoader() {
+        const loader = document.getElementById('loader');
+        loader.style.opacity = '0';
+        loader.style.transition = 'opacity 0.5s';
+        setTimeout(() => (loader.style.display = 'none'), 500);
+      }
+
+      onResize() {
+        this.camera.aspect = window.innerWidth / window.innerHeight;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+      }
+
+      animate() {
+        requestAnimationFrame(() => this.animate());
+        const deltaTime = this.clock.getDelta();
+        this.update(deltaTime);
+        this.renderer.render(this.scene, this.camera);
+      }
     }
 
-    const chest = this.vrm.humanoid.getNormalizedBoneNode('chest');
-    if (chest) chest.position.y = Math.sin(Date.now() * 0.001 * Config.BREATH.speed + this.breathOffset) * Config.BREATH.amp;
-
-    const head = this.vrm.humanoid.getNormalizedBoneNode('head');
-    if (head) {
-      const lerpFactor = Config.LOW_PERFORMANCE ? 1.2 : 2.5;
-      head.rotation.y = Utils.lerp(head.rotation.y, this.headTilt.x, dt * lerpFactor);
-      head.rotation.x = Utils.lerp(head.rotation.x, this.headTilt.y, dt * lerpFactor);
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => new AIAvatar().catch(console.error));
+    } else {
+      new AIAvatar().catch(console.error);
     }
-
-    if (this.progressSpin) {
-      this.currentRotation = Utils.lerp(this.currentRotation, this.targetRotation, 0.1);
-      this.progressSpin.style.transform = `rotate(${this.currentRotation}deg)`;
-    }
-  }
-}
-
-class ParadiseAI {
-  constructor(container) {
-    this.renderer = new Renderer3D(container);
-    const progressSpin = document.getElementById('progress-spin');
-    this.avatar = new VRMAvatar(this.renderer.scene, progressSpin);
-    this.clock = new THREE.Clock();
-    this.lastFrame = 0;
-    this.isTouching = false;
-
-    this.avatar.on('loaded', () => this.hideLoader());
-    this.initTouchControls();
-  }
-
-  hideLoader() {
-    const loader = document.getElementById('loader');
-    if (loader) loader.remove();
-  }
-
-  initTouchControls() {
-    const update = (x, y) => {
-      const nx = (x / window.innerWidth - 0.5) * 2;
-      const ny = -(y / window.innerHeight - 0.5) * 2;
-      this.avatar.eyeTarget.set(nx * 0.5, ny * 0.5);
-      this.avatar.headTilt.set(nx * Config.HEAD_TILT_FACTOR, ny * Config.HEAD_TILT_FACTOR);
-    };
-
-    const start = e => { this.isTouching = true; update(e.touches[0].clientX, e.touches[0].clientY); };
-    const move = e => { if (this.isTouching) update(e.touches[0].clientX, e.touches[0].clientY); };
-    const end = () => { this.isTouching = false; this.avatar.eyeTarget.set(0, 0); this.avatar.headTilt.set(0, 0); };
-
-    document.addEventListener('touchstart', start, { passive: true });
-    document.addEventListener('touchmove', move, { passive: true });
-    document.addEventListener('touchend', end);
-  }
-
-  async start() {
-    await this.avatar.load(Config.MODEL_URL);
-    this.loop();
-  }
-
-  loop() {
-    requestAnimationFrame(() => this.loop());
-    const now = performance.now();
-    let dt = (now - this.lastFrame) / 1000;
-    if (dt < 1 / Config.MAX_FPS) return;
-    this.lastFrame = now;
-
-    this.avatar.update(dt);
-    this.renderer.render();
-  }
-}
-
-new ParadiseAI(document.getElementById('app')).start();
-
-</script>
+  </script>
 </body>
 </html>
