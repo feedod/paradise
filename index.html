@@ -1,15 +1,27 @@
 <!DOCTYPE html>
 <html>
-  <head>
+<head>
     <meta charset="utf-8">
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
-    >
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>Paradise AI VRM</title>
+    <!-- ИМЕННО ТАК рекомендует документация -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/",
+                "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3/lib/three-vrm.module.min.js"
+            }
+        }
+    </script>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  </head>
-
-  <body>
-    <script type="module" src="app.js"></script>
-  </body>
+</head>
+<body>
+    <!-- Твой старый script type="module" src="app.js" НЕ СРАБОТАЕТ с importmap выше.
+    Весь код должен быть в одном модуле. -->
+    <script type="module">
+        // Весь код из app.js переносится СЮДА, начиная с импортов.
+        // Смотри код ниже, начиная с раздела "2. Идеальный app.js"
+    </script>
+</body>
 </html>
