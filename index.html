@@ -3,63 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <style>
-        html, body {
-            height: 100%;
-            margin: 0;
-            font-family: Arial, sans-serif;
-            overflow: hidden;
-        }
-
-        #text {
-            position: absolute;
-            font-weight: bold;
-            text-align: center;
-            transition: color 0.3s ease, font-size 0.2s ease, background-color 0.3s ease;
-        }
-    </style>
 </head>
 <body>
-    <h1 id="text"></h1>
-
-    <script>
-        const tg = window.Telegram.WebApp;
-        const textElement = document.getElementById('text');
-        const userLang = navigator.language || 'en';
-        textElement.textContent = userLang.startsWith('ru') ? 'Скоро' : 'Soon';
-
-        const updateText = () => {
-            const width = tg.viewport.width || window.innerWidth;
-            const height = tg.viewport.height || window.innerHeight;
-            const fontSize = Math.min(width / 5, height / 3);
-            textElement.style.fontSize = fontSize + 'px';
-            const rect = textElement.getBoundingClientRect();
-            textElement.style.left = (width - rect.width) / 2 + 'px';
-            textElement.style.top = (height - rect.height) / 2 + 'px';
-        };
-
-        const updateColors = () => {
-            if (tg) {
-                document.body.style.backgroundColor = tg.backgroundColor || '#000';
-                textElement.style.color = tg.textColor || '#fff';
-            } else {
-                document.body.style.backgroundColor = '#000';
-                textElement.style.color = '#fff';
-            }
-        };
-
-        if (tg) {
-            tg.ready();
-            updateText();
-            updateColors();
-            tg.onEvent('viewportChanged', updateText);
-            tg.onEvent('themeChanged', updateColors);
-        } else {
-            updateText();
-            updateColors();
-            window.addEventListener('resize', updateText);
-        }
-    </script>
+    <center>
+        <h1>Скоро</h1>
+    </center>
 </body>
 </html>
