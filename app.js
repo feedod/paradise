@@ -6,17 +6,21 @@ const TG = globalThis.Telegram?.WebApp;
 TG?.ready();
 TG?.expand();
 
+const DEVICE_MEMORY = navigator.deviceMemory || 1;
+const LOW_PERFORMANCE = DEVICE_MEMORY <= 2;
+
 const CONFIG = Object.freeze({
   MODEL_URL: 'https://edsandbox.bluemarble.in/three.js-master/examples/models/vrm/Alicia/AliciaSolid.vrm',
   CAMERA: { fov: 35, near: 0.1, far: 100, position: [0, 1.45, 1.9] },
-  PIXEL_RATIO: Math.min(window.devicePixelRatio || 1, 2),
-  BREATH: { speed: 0.6, amp: 0.015 },
-  BLINK_INTERVAL: { min: 3, max: 7 },
-  LIPSYNC_GAIN: 4.2,
-  EMOTION_LERP: 3,
+  PIXEL_RATIO: LOW_PERFORMANCE ? 1 : Math.min(window.devicePixelRatio || 1, 2),
+  BREATH: { speed: LOW_PERFORMANCE ? 0.25 : 0.6, amp: LOW_PERFORMANCE ? 0.008 : 0.015 },
+  BLINK_INTERVAL: { min: LOW_PERFORMANCE ? 8 : 3, max: LOW_PERFORMANCE ? 15 : 7 },
+  EMOTION_LERP: LOW_PERFORMANCE ? 1.5 : 3,
+  MAX_FPS: LOW_PERFORMANCE ? 25 : 60,
+  MESH_VERTEX_THRESHOLD: LOW_PERFORMANCE ? 12000 : 20000
 });
 
-const clamp = (val, min, max) => Math.min(max, Math.max(min, val));
+const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 const rand = (min, max) => min + Math.random() * (max - min);
 
@@ -25,10 +29,12 @@ class EmotionController {
   arousal = 0;
   targetValence = 0;
   targetArousal = 0;
+
   setTarget(valence, arousal) {
     this.targetValence = clamp(valence, -1, 1);
     this.targetArousal = clamp(arousal, 0, 1);
   }
+
   update(dt) {
     this.valence = lerp(this.valence, this.targetValence, dt * CONFIG.EMOTION_LERP);
     this.arousal = lerp(this.arousal, this.targetArousal, dt * CONFIG.EMOTION_LERP);
@@ -38,6 +44,7 @@ class EmotionController {
 class Renderer3D {
   constructor() {
     this.scene = new THREE.Scene();
+
     this.camera = new THREE.PerspectiveCamera(
       CONFIG.CAMERA.fov,
       window.innerWidth / window.innerHeight,
@@ -46,10 +53,17 @@ class Renderer3D {
     );
     this.camera.position.set(...CONFIG.CAMERA.position);
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+    this.renderer = new THREE.WebGLRenderer({
+      antialias: !LOW_PERFORMANCE,
+      alpha: true,
+      powerPreference: 'high-performance'
+    });
+
     this.renderer.setPixelRatio(CONFIG.PIXEL_RATIO);
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.shadowMap.enabled = false;
+    this.renderer.toneMapping = THREE.NoToneMapping;
 
     Object.assign(this.renderer.domElement.style, {
       position: 'fixed',
@@ -57,7 +71,7 @@ class Renderer3D {
       width: '100%',
       height: '100%',
       display: 'block',
-      touchAction: 'none',
+      touchAction: 'none'
     });
 
     Object.assign(document.body.style, {
@@ -65,15 +79,17 @@ class Renderer3D {
       width: '100%',
       height: '100%',
       overflow: 'hidden',
-      backgroundColor: '#000',
+      backgroundColor: '#000'
     });
 
     this.scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+
     const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
     dirLight.position.set(1, 2, 1.5);
     this.scene.add(dirLight);
 
     document.body.appendChild(this.renderer.domElement);
+
     window.addEventListener('resize', () => this.resize(), { passive: true });
   }
 
@@ -81,6 +97,7 @@ class Renderer3D {
     this.camera.aspect = window.innerWidth / window.innerHeight;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(window.innerWidth, window.innerHeight);
+    if (TG) TG.expand();
   }
 
   render() {
@@ -94,21 +111,31 @@ class VRMAvatar {
     this.vrm = null;
     this.blinkTimer = 0;
     this.nextBlink = rand(CONFIG.BLINK_INTERVAL.min, CONFIG.BLINK_INTERVAL.max);
+    this.breathOffset = Math.random() * Math.PI * 2;
   }
 
   async load(url) {
     try {
       const loader = new GLTFLoader();
-      loader.register(parser => new VRMLoaderPlugin(parser));
+      loader.register(p => new VRMLoaderPlugin(p));
       const gltf = await loader.loadAsync(url);
+
       VRMUtils.removeUnnecessaryVertices(gltf.scene);
       VRMUtils.removeUnnecessaryJoints(gltf.scene);
+
+      if (LOW_PERFORMANCE) {
+        gltf.scene.traverse(obj => {
+          if (obj.isMesh && obj.geometry && obj.geometry.attributes.position.count > CONFIG.MESH_VERTEX_THRESHOLD)
+            obj.visible = false;
+        });
+      }
+
       this.vrm = gltf.userData.vrm;
-      this.vrm.scene.scale.setScalar(1.6);
+      this.vrm.scene.scale.setScalar(LOW_PERFORMANCE ? 1.1 : 1.6);
       this.vrm.scene.position.set(0, -1.1, 0);
       this.scene.add(this.vrm.scene);
     } catch (e) {
-      console.error('Ошибка загрузки VRM:', e);
+      console.error('VRM load error:', e);
       TG?.showAlert('Не удалось загрузить аватар');
     }
   }
@@ -118,63 +145,33 @@ class VRMAvatar {
     this.vrm.blendShapeProxy.setValue(name, value);
   }
 
-  update(dt, emotion, lipsync) {
+  update(dt, emotion) {
     if (!this.vrm) return;
 
     const chest = this.vrm.humanoid.getNormalizedBoneNode('chest');
-    if (chest) chest.position.y = Math.sin(Date.now() * 0.001 * CONFIG.BREATH.speed) * CONFIG.BREATH.amp * (1 + emotion.arousal);
+    if (chest)
+      chest.position.y =
+        Math.sin(Date.now() * 0.001 * CONFIG.BREATH.speed + this.breathOffset) *
+        CONFIG.BREATH.amp *
+        (1 + emotion.arousal);
 
     const head = this.vrm.humanoid.getNormalizedBoneNode('head');
     if (head) {
-      head.rotation.y = lerp(head.rotation.y, 0, dt * 2.5);
-      head.rotation.x = lerp(head.rotation.x, 0, dt * 2.5);
+      const lerpFactor = LOW_PERFORMANCE ? 1.2 : 2.5;
+      head.rotation.y = lerp(head.rotation.y, 0, dt * lerpFactor);
+      head.rotation.x = lerp(head.rotation.x, 0, dt * lerpFactor);
     }
 
     this.blinkTimer += dt;
     if (this.blinkTimer > this.nextBlink) {
       this.setExpression('blink', 1);
-      setTimeout(() => this.setExpression('blink', 0), 120);
+      setTimeout(() => this.setExpression('blink', 0), LOW_PERFORMANCE ? 80 : 120);
       this.blinkTimer = 0;
       this.nextBlink = rand(CONFIG.BLINK_INTERVAL.min, CONFIG.BLINK_INTERVAL.max);
     }
 
-    this.setExpression('aa', lipsync);
     this.setExpression('joy', clamp(emotion.valence, 0, 1));
     this.setExpression('sorrow', clamp(-emotion.valence, 0, 1));
-  }
-}
-
-class Microphone {
-  constructor() {
-    this.level = 0;
-  }
-
-  async init() {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const AC = globalThis.AudioContext || globalThis.webkitAudioContext;
-      this.ctx = new AC({ latencyHint: 'interactive' });
-      const source = this.ctx.createMediaStreamSource(stream);
-      this.analyser = this.ctx.createAnalyser();
-      this.analyser.fftSize = 2048;
-      this.dataArray = new Uint8Array(this.analyser.fftSize);
-      source.connect(this.analyser);
-    } catch (e) {
-      console.error('Ошибка доступа к микрофону', e);
-      throw e;
-    }
-  }
-
-  update() {
-    this.analyser.getByteTimeDomainData(this.dataArray);
-    let sum = 0;
-    for (const val of this.dataArray) {
-      const n = (val - 128) / 128;
-      sum += n * n;
-    }
-    const rms = Math.sqrt(sum / this.dataArray.length);
-    this.level = lerp(this.level, rms, 0.15);
-    return clamp(this.level * CONFIG.LIPSYNC_GAIN, 0, 1);
   }
 }
 
@@ -183,33 +180,69 @@ class ParadiseAI {
     this.renderer = new Renderer3D();
     this.avatar = new VRMAvatar(this.renderer.scene);
     this.emotion = new EmotionController();
-    this.mic = new Microphone();
     this.clock = new THREE.Clock();
+    this.lastFrameTime = 0;
+    this.adaptiveTimer = 0;
+    this.fpsFactor = 1;
+
+    this.startX = null;
+    this.startY = null;
+
+    this.initTouchControls();
+  }
+
+  initTouchControls() {
+    document.addEventListener('touchstart', e => {
+      this.startX = e.touches[0].clientX;
+      this.startY = e.touches[0].clientY;
+    });
+
+    document.addEventListener('touchend', e => {
+      const endX = e.changedTouches[0].clientX;
+      const endY = e.changedTouches[0].clientY;
+
+      const dx = endX - this.startX;
+      const dy = endY - this.startY;
+      const absX = Math.abs(dx);
+      const absY = Math.abs(dy);
+
+      if (absX < 20 && absY < 20) {
+        this.emotion.setTarget(0, 0);
+        return;
+      }
+
+      if (absY > absX) {
+        if (dy < 0) this.emotion.setTarget(1, 0.7);
+        else this.emotion.setTarget(-1, 0.6);
+      } else {
+        if (dx > 0) this.emotion.setTarget(0.5, 0.5);
+        else this.emotion.setTarget(-0.5, 0.5);
+      }
+    });
   }
 
   async start() {
-    try {
-      await this.mic.init();
-    } catch {
-      TG?.showAlert('Нужен доступ к микрофону');
-      TG?.close();
-      return;
-    }
-
     await this.avatar.load(CONFIG.MODEL_URL);
     this.loop();
   }
 
   loop() {
     requestAnimationFrame(() => this.loop());
-    const dt = this.clock.getDelta();
 
-    this.emotion.update(dt);
-    this.emotion.setTarget(0.1, 0.2);
+    const now = performance.now();
+    let dt = (now - this.lastFrameTime) / 1000;
+    if (dt < 1 / CONFIG.MAX_FPS) return;
+    this.lastFrameTime = now;
 
-    const lipsync = this.mic.update();
-    this.avatar.update(dt, this.emotion, lipsync);
+    this.adaptiveTimer += dt;
+    if (this.adaptiveTimer > 2) {
+      const fps = 1 / dt;
+      this.fpsFactor = LOW_PERFORMANCE && fps < 20 ? 0.6 : 1;
+      this.adaptiveTimer = 0;
+    }
 
+    this.emotion.update(dt * this.fpsFactor);
+    this.avatar.update(dt * this.fpsFactor, this.emotion);
     this.renderer.render();
   }
 }
