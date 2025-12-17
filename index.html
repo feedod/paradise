@@ -1,27 +1,806 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-    <title>Paradise AI VRM</title>
-    <!-- ИМЕННО ТАК рекомендует документация -->
+    <title>Paradise AI - VRM Avatar</title>
+    
+    <!-- Import Map as per official documentation -->
     <script type="importmap">
-        {
-            "imports": {
-                "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
-                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/",
-                "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3/lib/three-vrm.module.min.js"
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/",
+            "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3/lib/three-vrm.module.min.js"
+        }
+    }
+    </script>
+    
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: #000;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        
+        #loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            transition: opacity 0.5s;
+        }
+        
+        #loading.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-top-color: #4CAF50;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        #error {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 40px;
+            z-index: 1001;
+            text-align: center;
+        }
+        
+        #error h2 {
+            color: #ff6b6b;
+            margin-bottom: 20px;
+        }
+        
+        #restartBtn {
+            margin-top: 20px;
+            padding: 12px 24px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="loading">
+        <div class="spinner"></div>
+        <div id="progressText">Initializing...</div>
+    </div>
+    
+    <div id="error">
+        <h2>Application Error</h2>
+        <div id="errorMessage"></div>
+        <button id="restartBtn">Restart Application</button>
+    </div>
+    
+    <script type="module">
+    // ============================================
+    // PARADISE AI VRM VIEWER - GOD MODE EDITION
+    // ============================================
+
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+
+    // ================= CONFIGURATION ============
+    const CONFIG = {
+        DEBUG: false,
+        MODEL_URL: './VRM1_Constraint_Twist_Sample.vrm',
+        
+        RENDER: {
+            TONE_MAPPING: THREE.ACESFilmicToneMapping,
+            EXPOSURE: 1.0,
+            SHADOWS: true,
+            ANTIALIAS: true
+        },
+        
+        CAMERA: {
+            FOV: 40,
+            NEAR: 0.1,
+            FAR: 100,
+            INITIAL_POSITION: new THREE.Vector3(0, 1.2, 2.5)
+        },
+        
+        LIGHTS: {
+            AMBIENT: { color: 0xffffff, intensity: 0.5 },
+            MAIN: { color: 0xffffff, intensity: 1.0, position: [3, 4, 2] },
+            FILL: { color: 0xffffff, intensity: 0.3, position: [-3, 2, -1] }
+        },
+        
+        ANIMATION: {
+            BREATH_SPEED: 0.5,
+            BREATH_AMPLITUDE: 0.008,
+            BLINK_INTERVAL: { min: 2, max: 6 },
+            EYE_FOLLOW_SPEED: 0.1,
+            HEAD_TURN_SPEED: 0.05
+        }
+    };
+
+    // ================= ERROR HANDLER ============
+    class ErrorHandler {
+        static showError(message, details = '') {
+            console.error('ERROR:', message, details);
+            document.getElementById('errorMessage').textContent = message + (details ? `\n\nDetails: ${details}` : '');
+            document.getElementById('error').style.display = 'flex';
+            document.getElementById('loading').style.display = 'none';
+        }
+        
+        static hideError() {
+            document.getElementById('error').style.display = 'none';
+        }
+    }
+
+    // ================= LOADING MANAGER ==========
+    class LoadingManager {
+        constructor() {
+            this.progressElement = document.getElementById('progressText');
+            this.loadingElement = document.getElementById('loading');
+        }
+        
+        update(progress) {
+            if (this.progressElement) {
+                this.progressElement.textContent = `Loading: ${Math.round(progress * 100)}%`;
             }
         }
-    </script>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-</head>
-<body>
-    <!-- Твой старый script type="module" src="app.js" НЕ СРАБОТАЕТ с importmap выше.
-    Весь код должен быть в одном модуле. -->
-    <script type="module">
-        // Весь код из app.js переносится СЮДА, начиная с импортов.
-        // Смотри код ниже, начиная с раздела "2. Идеальный app.js"
+        
+        complete() {
+            if (this.loadingElement) {
+                this.loadingElement.classList.add('hidden');
+                setTimeout(() => {
+                    this.loadingElement.style.display = 'none';
+                }, 500);
+            }
+        }
+    }
+
+    // ================= SCENE MANAGER ============
+    class SceneManager {
+        constructor() {
+            this.scene = null;
+            this.camera = null;
+            this.renderer = null;
+            this.clock = new THREE.Clock();
+            
+            this.init();
+        }
+        
+        init() {
+            // Create scene
+            this.scene = new THREE.Scene();
+            
+            // Create camera
+            const aspect = window.innerWidth / window.innerHeight;
+            this.camera = new THREE.PerspectiveCamera(
+                CONFIG.CAMERA.FOV,
+                aspect,
+                CONFIG.CAMERA.NEAR,
+                CONFIG.CAMERA.FAR
+            );
+            this.camera.position.copy(CONFIG.CAMERA.INITIAL_POSITION);
+            
+            // Create renderer
+            this.renderer = new THREE.WebGLRenderer({
+                antialias: CONFIG.RENDER.ANTIALIAS,
+                alpha: true,
+                powerPreference: 'high-performance'
+            });
+            
+            this.renderer.setSize(window.innerWidth, window.innerHeight);
+            this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+            this.renderer.toneMapping = CONFIG.RENDER.TONE_MAPPING;
+            this.renderer.toneMappingExposure = CONFIG.RENDER.EXPOSURE;
+            this.renderer.shadowMap.enabled = CONFIG.RENDER.SHADOWS;
+            this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            
+            // Add renderer to DOM
+            document.body.appendChild(this.renderer.domElement);
+            
+            // Setup lights
+            this.setupLights();
+            
+            // Setup event listeners
+            this.setupEventListeners();
+            
+            // Setup ground plane
+            this.setupGround();
+        }
+        
+        setupLights() {
+            // Ambient light
+            const ambientLight = new THREE.AmbientLight(
+                CONFIG.LIGHTS.AMBIENT.color,
+                CONFIG.LIGHTS.AMBIENT.intensity
+            );
+            this.scene.add(ambientLight);
+            
+            // Main directional light
+            const mainLight = new THREE.DirectionalLight(
+                CONFIG.LIGHTS.MAIN.color,
+                CONFIG.LIGHTS.MAIN.intensity
+            );
+            mainLight.position.set(...CONFIG.LIGHTS.MAIN.position);
+            mainLight.castShadow = CONFIG.RENDER.SHADOWS;
+            
+            if (CONFIG.RENDER.SHADOWS) {
+                mainLight.shadow.mapSize.width = 2048;
+                mainLight.shadow.mapSize.height = 2048;
+                mainLight.shadow.camera.near = 0.5;
+                mainLight.shadow.camera.far = 50;
+                mainLight.shadow.camera.left = -10;
+                mainLight.shadow.camera.right = 10;
+                mainLight.shadow.camera.top = 10;
+                mainLight.shadow.camera.bottom = -10;
+            }
+            
+            this.scene.add(mainLight);
+            
+            // Fill light
+            const fillLight = new THREE.DirectionalLight(
+                CONFIG.LIGHTS.FILL.color,
+                CONFIG.LIGHTS.FILL.intensity
+            );
+            fillLight.position.set(...CONFIG.LIGHTS.FILL.position);
+            this.scene.add(fillLight);
+        }
+        
+        setupGround() {
+            const groundGeometry = new THREE.PlaneGeometry(10, 10);
+            const groundMaterial = new THREE.ShadowMaterial({
+                opacity: 0.2
+            });
+            
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.y = -1;
+            ground.receiveShadow = true;
+            
+            this.scene.add(ground);
+        }
+        
+        setupEventListeners() {
+            const onResize = () => {
+                const width = window.innerWidth;
+                const height = window.innerHeight;
+                
+                this.camera.aspect = width / height;
+                this.camera.updateProjectionMatrix();
+                this.renderer.setSize(width, height);
+            };
+            
+            window.addEventListener('resize', onResize, { passive: true });
+            onResize();
+        }
+        
+        render() {
+            this.renderer.render(this.scene, this.camera);
+        }
+        
+        getDeltaTime() {
+            return this.clock.getDelta();
+        }
+    }
+
+    // ================= VRM AVATAR ==============
+    class VRMAvatar {
+        constructor(scene) {
+            this.scene = scene;
+            this.vrm = null;
+            this.mixer = null;
+            
+            // Animation states
+            this.blinkTimer = 0;
+            this.nextBlink = 0;
+            this.breathPhase = Math.random() * Math.PI * 2;
+            this.eyeTarget = new THREE.Vector3(0, 1.6, -3);
+            this.headTargetRotation = new THREE.Quaternion();
+            
+            this.resetBlinkTimer();
+        }
+        
+        async load(url, onProgress) {
+            return new Promise((resolve, reject) => {
+                const loader = new GLTFLoader();
+                
+                // Register VRM loader plugin (OFFICIAL METHOD)
+                loader.register((parser) => new VRMLoaderPlugin(parser));
+                
+                loader.load(
+                    url,
+                    (gltf) => {
+                        try {
+                            // Get VRM instance from gltf
+                            this.vrm = gltf.userData.vrm;
+                            
+                            if (!this.vrm) {
+                                reject(new Error('Failed to load VRM data from model'));
+                                return;
+                            }
+                            
+                            // Optimize the model
+                            VRMUtils.removeUnnecessaryVertices(gltf.scene);
+                            VRMUtils.removeUnnecessaryJoints(gltf.scene);
+                            
+                            // Set up model properties
+                            this.vrm.scene.traverse((child) => {
+                                if (child.isMesh) {
+                                    child.castShadow = true;
+                                    child.receiveShadow = true;
+                                    child.frustumCulled = true;
+                                }
+                            });
+                            
+                            // Center and position the model
+                            this.centerModel();
+                            
+                            // Add to scene
+                            this.scene.add(this.vrm.scene);
+                            
+                            // Set up lookAt target
+                            this.setupLookAt();
+                            
+                            console.log('VRM avatar loaded successfully');
+                            resolve(this.vrm);
+                            
+                        } catch (error) {
+                            reject(error);
+                        }
+                    },
+                    (progress) => {
+                        if (onProgress && progress.total > 0) {
+                            const percent = progress.loaded / progress.total;
+                            onProgress(percent);
+                        }
+                    },
+                    (error) => {
+                        reject(error);
+                    }
+                );
+            });
+        }
+        
+        centerModel() {
+            if (!this.vrm) return;
+            
+            // Calculate bounding box
+            const box = new THREE.Box3().setFromObject(this.vrm.scene);
+            const center = new THREE.Vector3();
+            const size = new THREE.Vector3();
+            
+            box.getCenter(center);
+            box.getSize(size);
+            
+            // Calculate the offset to position the model at y = 0
+            const yOffset = -box.min.y;
+            
+            // Scale the model to a reasonable size
+            const targetHeight = 1.8;
+            const scale = targetHeight / size.y;
+            
+            // Apply transformations
+            this.vrm.scene.scale.multiplyScalar(scale * 0.8);
+            this.vrm.scene.position.set(0, -1, 0);
+            
+            console.log('Model centered:', { center, size, scale, yOffset });
+        }
+        
+        setupLookAt() {
+            if (!this.vrm?.lookAt) return;
+            
+            // Create a target object for lookAt
+            this.lookAtTarget = new THREE.Object3D();
+            this.lookAtTarget.position.set(0, 1.4, -3);
+            this.scene.add(this.lookAtTarget);
+            
+            // Set lookAt target
+            this.vrm.lookAt.target = this.lookAtTarget;
+        }
+        
+        resetBlinkTimer() {
+            this.blinkTimer = 0;
+            this.nextBlink = THREE.MathUtils.randFloat(
+                CONFIG.ANIMATION.BLINK_INTERVAL.min,
+                CONFIG.ANIMATION.BLINK_INTERVAL.max
+            );
+        }
+        
+        updateBlink(deltaTime) {
+            this.blinkTimer += deltaTime;
+            
+            if (this.blinkTimer >= this.nextBlink && this.vrm?.expressionManager) {
+                // Trigger blink
+                this.vrm.expressionManager.setValue('blink', 1);
+                
+                // Reset blink after short duration
+                setTimeout(() => {
+                    if (this.vrm?.expressionManager) {
+                        this.vrm.expressionManager.setValue('blink', 0);
+                    }
+                }, 100);
+                
+                this.resetBlinkTimer();
+            }
+        }
+        
+        updateBreathing(deltaTime) {
+            this.breathPhase += deltaTime * CONFIG.ANIMATION.BREATH_SPEED;
+            
+            const chestBone = this.vrm?.humanoid?.getNormalizedBoneNode('chest');
+            if (chestBone) {
+                const breathAmount = Math.sin(this.breathPhase) * CONFIG.ANIMATION.BREATH_AMPLITUDE;
+                chestBone.position.y = breathAmount;
+            }
+        }
+        
+        updateLookAt(deltaTime, inputX = 0, inputY = 0) {
+            if (!this.vrm?.lookAt || !this.lookAtTarget) return;
+            
+            // Update eye target based on input
+            this.eyeTarget.x = THREE.MathUtils.lerp(
+                this.eyeTarget.x,
+                inputX * 1.5,
+                CONFIG.ANIMATION.EYE_FOLLOW_SPEED * deltaTime * 60
+            );
+            
+            this.eyeTarget.y = THREE.MathUtils.lerp(
+                this.eyeTarget.y,
+                1.6 + inputY * 0.5,
+                CONFIG.ANIMATION.EYE_FOLLOW_SPEED * deltaTime * 60
+            );
+            
+            // Update lookAt target position
+            this.lookAtTarget.position.lerp(this.eyeTarget, CONFIG.ANIMATION.EYE_FOLLOW_SPEED * deltaTime * 60);
+            
+            // Update VRM lookAt system
+            this.vrm.lookAt.update(deltaTime);
+        }
+        
+        update(deltaTime, inputX = 0, inputY = 0) {
+            if (!this.vrm) return;
+            
+            this.updateBlink(deltaTime);
+            this.updateBreathing(deltaTime);
+            this.updateLookAt(deltaTime, inputX, inputY);
+            
+            // Update VRM (IMPORTANT: This updates the skeleton)
+            this.vrm.update(deltaTime);
+        }
+    }
+
+    // ================= INPUT MANAGER ============
+    class InputManager {
+        constructor() {
+            this.inputX = 0;
+            this.inputY = 0;
+            this.isTouching = false;
+            
+            this.setupEventListeners();
+        }
+        
+        setupEventListeners() {
+            const handleTouchStart = (e) => {
+                e.preventDefault();
+                this.isTouching = true;
+                this.updateInput(e.touches[0]);
+            };
+            
+            const handleTouchMove = (e) => {
+                e.preventDefault();
+                if (this.isTouching) {
+                    this.updateInput(e.touches[0]);
+                }
+            };
+            
+            const handleTouchEnd = () => {
+                this.isTouching = false;
+                this.inputX = 0;
+                this.inputY = 0;
+            };
+            
+            // Touch events
+            document.addEventListener('touchstart', handleTouchStart, { passive: false });
+            document.addEventListener('touchmove', handleTouchMove, { passive: false });
+            document.addEventListener('touchend', handleTouchEnd, { passive: true });
+            document.addEventListener('touchcancel', handleTouchEnd, { passive: true });
+            
+            // Mouse events for desktop testing
+            const handleMouseMove = (e) => {
+                if (this.isTouching) {
+                    this.updateInput(e);
+                }
+            };
+            
+            const handleMouseDown = (e) => {
+                this.isTouching = true;
+                this.updateInput(e);
+            };
+            
+            const handleMouseUp = () => {
+                this.isTouching = false;
+                this.inputX = 0;
+                this.inputY = 0;
+            };
+            
+            document.addEventListener('mousedown', handleMouseDown);
+            document.addEventListener('mousemove', handleMouseMove);
+            document.addEventListener('mouseup', handleMouseUp);
+        }
+        
+        updateInput(touch) {
+            // Normalize input to [-1, 1] range
+            this.inputX = (touch.clientX / window.innerWidth) * 2 - 1;
+            this.inputY = -((touch.clientY / window.innerHeight) * 2 - 1);
+        }
+        
+        getInput() {
+            return { x: this.inputX, y: this.inputY };
+        }
+    }
+
+    // ================= TELEGRAM INTEGRATION =====
+    class TelegramIntegration {
+        constructor() {
+            this.tg = window.Telegram?.WebApp;
+            this.isAvailable = !!this.tg;
+        }
+        
+        init() {
+            if (!this.isAvailable) return;
+            
+            try {
+                this.tg.ready();
+                this.tg.expand();
+                
+                // Set up main button for loading indication
+                this.tg.MainButton.setText('Loading VRM Model...');
+                this.tg.MainButton.show();
+                this.tg.MainButton.disable();
+                
+                console.log('Telegram Web App initialized');
+            } catch (error) {
+                console.warn('Telegram Web App initialization failed:', error);
+                this.isAvailable = false;
+            }
+        }
+        
+        updateProgress(percent) {
+            if (!this.isAvailable) return;
+            
+            this.tg.MainButton.setText(`Loading: ${Math.round(percent * 100)}%`);
+        }
+        
+        hideButton() {
+            if (!this.isAvailable) return;
+            
+            this.tg.MainButton.hide();
+        }
+        
+        showAlert(message) {
+            if (!this.isAvailable) {
+                alert(message);
+                return;
+            }
+            
+            this.tg.showAlert(message);
+        }
+    }
+
+    // ================= MAIN APPLICATION =========
+    class ParadiseAI {
+        constructor() {
+            this.sceneManager = null;
+            this.avatar = null;
+            this.inputManager = null;
+            this.telegram = null;
+            this.loadingManager = null;
+            
+            this.isRunning = false;
+            this.animationId = null;
+            
+            this.init();
+        }
+        
+        async init() {
+            try {
+                console.log('Initializing Paradise AI...');
+                
+                // Initialize managers
+                this.loadingManager = new LoadingManager();
+                this.telegram = new TelegramIntegration();
+                this.telegram.init();
+                
+                // Initialize scene
+                this.sceneManager = new SceneManager();
+                
+                // Initialize input
+                this.inputManager = new InputManager();
+                
+                // Create avatar
+                this.avatar = new VRMAvatar(this.sceneManager.scene);
+                
+                // Load avatar model
+                await this.loadAvatar();
+                
+                // Start animation loop
+                this.start();
+                
+                console.log('Paradise AI initialized successfully');
+                
+            } catch (error) {
+                ErrorHandler.showError(
+                    'Failed to initialize application',
+                    error.message
+                );
+                
+                this.telegram.showAlert(`Initialization failed: ${error.message}`);
+            }
+        }
+        
+        async loadAvatar() {
+            try {
+                this.loadingManager.update(0);
+                
+                await this.avatar.load(
+                    CONFIG.MODEL_URL,
+                    (progress) => {
+                        this.loadingManager.update(progress);
+                        this.telegram.updateProgress(progress);
+                    }
+                );
+                
+                this.loadingManager.complete();
+                this.telegram.hideButton();
+                
+            } catch (error) {
+                throw new Error(`Failed to load avatar: ${error.message}`);
+            }
+        }
+        
+        start() {
+            if (this.isRunning) return;
+            
+            this.isRunning = true;
+            this.animate();
+        }
+        
+        stop() {
+            this.isRunning = false;
+            
+            if (this.animationId) {
+                cancelAnimationFrame(this.animationId);
+                this.animationId = null;
+            }
+        }
+        
+        animate() {
+            if (!this.isRunning) return;
+            
+            this.animationId = requestAnimationFrame(() => this.animate());
+            
+            try {
+                const deltaTime = this.sceneManager.getDeltaTime();
+                const input = this.inputManager.getInput();
+                
+                // Update avatar
+                this.avatar.update(deltaTime, input.x, input.y);
+                
+                // Render scene
+                this.sceneManager.render();
+                
+            } catch (error) {
+                console.error('Animation loop error:', error);
+                this.stop();
+                ErrorHandler.showError('Animation error', error.message);
+            }
+        }
+        
+        dispose() {
+            this.stop();
+            
+            // Clean up resources
+            if (this.sceneManager && this.sceneManager.renderer) {
+                this.sceneManager.renderer.dispose();
+                this.sceneManager.renderer.domElement.remove();
+            }
+            
+            console.log('Paradise AI disposed');
+        }
+    }
+
+    // ================= APPLICATION BOOTSTRAP ====
+    // Wait for DOM to be ready
+    document.addEventListener('DOMContentLoaded', async () => {
+        // Check for WebGL support
+        if (!WebGLRenderingContext) {
+            ErrorHandler.showError(
+                'WebGL not supported',
+                'Your browser or device does not support WebGL, which is required for this application.'
+            );
+            return;
+        }
+        
+        let app = null;
+        
+        try {
+            // Create and initialize application
+            app = new ParadiseAI();
+            
+            // Handle page visibility changes
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) {
+                    app?.stop();
+                } else {
+                    app?.start();
+                }
+            });
+            
+            // Handle beforeunload
+            window.addEventListener('beforeunload', () => {
+                app?.dispose();
+            });
+            
+            // Setup restart button
+            document.getElementById('restartBtn').addEventListener('click', () => {
+                ErrorHandler.hideError();
+                
+                if (app) {
+                    app.dispose();
+                }
+                
+                // Small delay before restarting
+                setTimeout(() => {
+                    app = new ParadiseAI();
+                }, 100);
+            });
+            
+        } catch (error) {
+            ErrorHandler.showError(
+                'Failed to bootstrap application',
+                error.message
+            );
+        }
+        
+        // Expose app globally for debugging (optional)
+        window.PARADISE_AI = app;
+    });
+
     </script>
 </body>
 </html>
