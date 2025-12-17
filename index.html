@@ -1,219 +1,287 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<script type="importmap">
-{
-"imports": {
-"three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
-"three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/",
-"@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3/lib/three-vrm.module.min.js"
-}
-}
-</script>
-<style>
-body{margin:0;padding:0;overflow:hidden;background:#000;}
-canvas{display:block;width:100%;height:100%;}
-#loader{position:fixed;top:0;left:0;width:100%;height:100%;background:#000;display:flex;justify-content:center;align-items:center;z-index:2;}
-.loader-spinner{width:24px;height:24px;border:2px solid rgba(255,255,255,0.1);border-top-color:#fff;border-radius:50%;animation:spin 1s linear infinite;}
-@keyframes spin{to{transform:rotate(360deg);}}
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/",
+      "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3/lib/three-vrm.module.min.js"
+    }
+  }
+  </script>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #000;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    #loader {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: #000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 2;
+    }
+    .loader-spinner {
+      width: 24px;
+      height: 24px;
+      border: 2px solid rgba(255, 255, 255, 0.1);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
 </head>
 <body>
-<div id="loader"><div class="loader-spinner"></div></div>
-<script type="module">
-import*as THREE from'three';
-import{GLTFLoader}from'three/addons/loaders/GLTFLoader.js';
-import{VRMLoaderPlugin,VRMUtils}from'@pixiv/three-vrm';
-class AIAvatar{
-constructor(){
-this.scene=new THREE.Scene();
-this.clock=new THREE.Clock();
-this.vrm=null;
-this.input={x:0,y:0};
-this.eyeTarget=new THREE.Vector3(0,1.6,-3);
-this.headTarget=new THREE.Quaternion();
-this.blinkTimer=0;
-this.nextBlink=0;
-this.breathPhase=0;
-this.idleTime=0;
-this.idleTarget=new THREE.Vector2(0,0);
-this.init();
-}
-async init(){
-await this.setupRenderer();
-await this.setupScene();
-await this.loadModel();
-this.setupInput();
-this.hideLoader();
-this.animate();
-}
-async setupRenderer(){
-this.camera=new THREE.PerspectiveCamera(40,window.innerWidth/window.innerHeight,0.1,100);
-this.camera.position.set(0,1.2,2.2);
-this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:true,powerPreference:'high-performance'});
-this.renderer.setSize(window.innerWidth,window.innerHeight);
-this.renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
-this.renderer.outputColorSpace=THREE.SRGBColorSpace;
-this.renderer.shadowMap.enabled=true;
-this.renderer.shadowMap.type=THREE.PCFSoftShadowMap;
-document.body.appendChild(this.renderer.domElement);
-window.addEventListener('resize',()=>this.onResize());
-}
-async setupScene(){
-const ambient=new THREE.AmbientLight(0xffffff,0.6);
-this.scene.add(ambient);
-const mainLight=new THREE.DirectionalLight(0xffffff,1.0);
-mainLight.position.set(2,4,2);
-mainLight.castShadow=true;
-mainLight.shadow.mapSize.width=1024;
-mainLight.shadow.mapSize.height=1024;
-mainLight.shadow.camera.near=0.5;
-mainLight.shadow.camera.far=50;
-this.scene.add(mainLight);
-const rimLight=new THREE.DirectionalLight(0xffffff,0.3);
-rimLight.position.set(-2,2,-2);
-this.scene.add(rimLight);
-}
-async loadModel(){
-return new Promise((resolve,reject)=>{
-const loader=new GLTFLoader();
-loader.register((parser)=>new VRMLoaderPlugin(parser));
-loader.load(
-'./VRM1_Constraint_Twist_Sample.vrm',
-(gltf)=>{
-this.vrm=gltf.userData.vrm;
-if(!this.vrm){
-reject(new Error('Invalid VRM model'));
-return;
-}
-VRMUtils.removeUnnecessaryVertices(gltf.scene);
-VRMUtils.removeUnnecessaryJoints(gltf.scene);
-this.vrm.scene.position.set(0,-1.0,0);
-this.setupLookAt();
-this.scene.add(this.vrm.scene);
-this.nextBlink=THREE.MathUtils.randFloat(2,6);
-resolve();
-},
-(progress)=>{
-const percent=Math.round((progress.loaded/progress.total)*100);
-document.getElementById('loader').style.opacity=1-(percent/100);
-},
-(error)=>reject(error)
-);
-});
-}
-setupLookAt(){
-if(!this.vrm?.lookAt)return;
-this.lookAtTarget=new THREE.Object3D();
-this.lookAtTarget.position.set(0,1.5,-3);
-this.scene.add(this.lookAtTarget);
-this.vrm.lookAt.target=this.lookAtTarget;
-}
-setupInput(){
-const onMove=(clientX,clientY)=>{
-this.input.x=(clientX/window.innerWidth)*2-1;
-this.input.y=-((clientY/window.innerHeight)*2-1);
-this.idleTime=0;
-};
-const onEnd=()=>{
-this.input.x=0;
-this.input.y=0;
-};
-document.addEventListener('touchstart',(e)=>{
-e.preventDefault();
-onMove(e.touches[0].clientX,e.touches[0].clientY);
-},{passive:false});
-document.addEventListener('touchmove',(e)=>{
-e.preventDefault();
-onMove(e.touches[0].clientX,e.touches[0].clientY);
-},{passive:false});
-document.addEventListener('touchend',(e)=>{
-e.preventDefault();
-onEnd();
-},{passive:false});
-document.addEventListener('mousedown',(e)=>onMove(e.clientX,e.clientY));
-document.addEventListener('mousemove',(e)=>{
-if(e.buttons===1)onMove(e.clientX,e.clientY);
-});
-document.addEventListener('mouseup',onEnd);
-this.idleTarget.set(THREE.MathUtils.randFloat(-0.3,0.3),THREE.MathUtils.randFloat(-0.2,0.2));
-}
-updateIdleMovement(deltaTime){
-this.idleTime+=deltaTime;
-if(this.idleTime>5){
-this.idleTarget.set(THREE.MathUtils.randFloat(-0.3,0.3),THREE.MathUtils.randFloat(-0.2,0.2));
-this.idleTime=0;
-}
-const idleX=THREE.MathUtils.lerp(this.input.x,this.idleTarget.x,Math.min(this.idleTime*0.5,1));
-const idleY=THREE.MathUtils.lerp(this.input.y,this.idleTarget.y,Math.min(this.idleTime*0.5,1));
-return{x:idleX,y:idleY};
-}
-updateBreathing(deltaTime){
-this.breathPhase+=deltaTime*0.5;
-const chest=this.vrm?.humanoid?.getNormalizedBoneNode('chest');
-if(chest){
-chest.position.y=Math.sin(this.breathPhase)*0.008;
-}
-}
-updateBlink(deltaTime){
-this.blinkTimer+=deltaTime;
-if(this.blinkTimer>=this.nextBlink&&this.vrm?.expressionManager){
-this.vrm.expressionManager.setValue('blink',1);
-setTimeout(()=>{
-if(this.vrm?.expressionManager){
-this.vrm.expressionManager.setValue('blink',0);
-}
-},100);
-this.blinkTimer=0;
-this.nextBlink=THREE.MathUtils.randFloat(2,6);
-}
-}
-updateLookAt(deltaTime,inputX,inputY){
-if(!this.vrm?.lookAt||!this.lookAtTarget)return;
-this.eyeTarget.x=THREE.MathUtils.lerp(this.eyeTarget.x,inputX*1.5,0.2*deltaTime*60);
-this.eyeTarget.y=THREE.MathUtils.lerp(this.eyeTarget.y,1.6+inputY*0.5,0.2*deltaTime*60);
-this.lookAtTarget.position.lerp(this.eyeTarget,0.2*deltaTime*60);
-const headRotation=new THREE.Quaternion().setFromEuler(new THREE.Euler(inputY*0.2,inputX*0.3,0,'XYZ'));
-this.headTarget.slerp(headRotation,0.1*deltaTime*60);
-this.vrm.lookAt.update(deltaTime);
-}
-update(deltaTime){
-if(!this.vrm)return;
-const input=this.input.x===0&&this.input.y===0?this.updateIdleMovement(deltaTime):this.input;
-this.updateBreathing(deltaTime);
-this.updateBlink(deltaTime);
-this.updateLookAt(deltaTime,input.x,input.y);
-this.vrm.update(deltaTime);
-}
-hideLoader(){
-const loader=document.getElementById('loader');
-loader.style.opacity='0';
-loader.style.transition='opacity 0.5s';
-setTimeout(()=>{
-loader.style.display='none';
-},500);
-}
-onResize(){
-this.camera.aspect=window.innerWidth/window.innerHeight;
-this.camera.updateProjectionMatrix();
-this.renderer.setSize(window.innerWidth,window.innerHeight);
-}
-animate(){
-requestAnimationFrame(()=>this.animate());
-const deltaTime=this.clock.getDelta();
-this.update(deltaTime);
-this.renderer.render(this.scene,this.camera);
-}
-}
-if(document.readyState==='loading'){
-document.addEventListener('DOMContentLoaded',()=>{
-new AIAvatar().catch(console.error);
-});
-}else{
-new AIAvatar().catch(console.error);
-}
-</script>
+  <div id="loader">
+    <div class="loader-spinner"></div>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+
+    class AIAvatar {
+      constructor() {
+        this.scene = new THREE.Scene();
+        this.clock = new THREE.Clock();
+        this.vrm = null;
+
+        this.input = { x: 0, y: 0 };
+        this.eyeTarget = new THREE.Vector3(0, 1.6, -3);
+        this.headTarget = new THREE.Quaternion();
+        this.blinkTimer = 0;
+        this.nextBlink = 0;
+        this.breathPhase = 0;
+
+        this.idleTime = 0;
+        this.idleTarget = new THREE.Vector2(0, 0);
+
+        this.init();
+      }
+
+      async init() {
+        await this.setupRenderer();
+        await this.setupScene();
+        await this.loadModel();
+        this.setupInput();
+        this.hideLoader();
+        this.animate();
+      }
+
+      async setupRenderer() {
+        this.camera = new THREE.PerspectiveCamera(
+          40,
+          window.innerWidth / window.innerHeight,
+          0.1,
+          100
+        );
+        this.camera.position.set(0, 1.2, 2.2);
+
+        this.renderer = new THREE.WebGLRenderer({
+          antialias: true,
+          alpha: true,
+          powerPreference: 'high-performance'
+        });
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+        this.renderer.shadowMap.enabled = true;
+        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+        document.body.appendChild(this.renderer.domElement);
+        window.addEventListener('resize', () => this.onResize());
+      }
+
+      async setupScene() {
+        const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+        this.scene.add(ambient);
+
+        const mainLight = new THREE.DirectionalLight(0xffffff, 1.0);
+        mainLight.position.set(2, 4, 2);
+        mainLight.castShadow = true;
+        mainLight.shadow.mapSize.width = 1024;
+        mainLight.shadow.mapSize.height = 1024;
+        mainLight.shadow.camera.near = 0.5;
+        mainLight.shadow.camera.far = 50;
+        this.scene.add(mainLight);
+
+        const rimLight = new THREE.DirectionalLight(0xffffff, 0.3);
+        rimLight.position.set(-2, 2, -2);
+        this.scene.add(rimLight);
+      }
+
+      async loadModel() {
+        return new Promise((resolve, reject) => {
+          const loader = new GLTFLoader();
+          loader.register((parser) => new VRMLoaderPlugin(parser));
+          loader.load(
+            './VRM1_Constraint_Twist_Sample.vrm',
+            (gltf) => {
+              this.vrm = gltf.userData.vrm;
+              if (!this.vrm) {
+                reject(new Error('Invalid VRM model'));
+                return;
+              }
+              VRMUtils.removeUnnecessaryVertices(gltf.scene);
+              VRMUtils.removeUnnecessaryJoints(gltf.scene);
+              this.vrm.scene.position.set(0, -1.0, 0);
+              this.setupLookAt();
+              this.scene.add(this.vrm.scene);
+              this.nextBlink = THREE.MathUtils.randFloat(2, 6);
+              resolve();
+            },
+            (progress) => {
+              const percent = Math.round((progress.loaded / progress.total) * 100);
+              document.getElementById('loader').style.opacity = 1 - percent / 100;
+            },
+            (error) => reject(error)
+          );
+        });
+      }
+
+      setupLookAt() {
+        if (!this.vrm?.lookAt) return;
+
+        this.lookAtTarget = new THREE.Object3D();
+        this.lookAtTarget.position.set(0, 1.5, -3);
+        this.scene.add(this.lookAtTarget);
+        this.vrm.lookAt.target = this.lookAtTarget;
+      }
+
+      setupInput() {
+        const onMove = (x, y) => {
+          this.input.x = (x / window.innerWidth) * 2 - 1;
+          this.input.y = -((y / window.innerHeight) * 2 - 1);
+          this.idleTime = 0;
+        };
+
+        const onEnd = () => {
+          this.input.x = 0;
+          this.input.y = 0;
+        };
+
+        const pointerEvents = [
+          { type: 'touchstart', getXY: (e) => [e.touches[0].clientX, e.touches[0].clientY] },
+          { type: 'touchmove', getXY: (e) => [e.touches[0].clientX, e.touches[0].clientY] },
+          { type: 'touchend', getXY: () => null },
+          { type: 'mousedown', getXY: (e) => [e.clientX, e.clientY] },
+          { type: 'mousemove', getXY: (e) => (e.buttons === 1 ? [e.clientX, e.clientY] : null) },
+          { type: 'mouseup', getXY: () => null }
+        ];
+
+        pointerEvents.forEach((evt) => {
+          document.addEventListener(evt.type, (e) => {
+            if (evt.getXY(e)) onMove(...evt.getXY(e));
+            else if (evt.type === 'mouseup' || evt.type === 'touchend') onEnd();
+            if (e.cancelable) e.preventDefault();
+          }, { passive: false });
+        });
+
+        this.idleTarget.set(
+          THREE.MathUtils.randFloat(-0.3, 0.3),
+          THREE.MathUtils.randFloat(-0.2, 0.2)
+        );
+      }
+
+      updateIdleMovement(deltaTime) {
+        this.idleTime += deltaTime;
+        if (this.idleTime > 5) {
+          this.idleTarget.set(
+            THREE.MathUtils.randFloat(-0.3, 0.3),
+            THREE.MathUtils.randFloat(-0.2, 0.2)
+          );
+          this.idleTime = 0;
+        }
+        const idleX = THREE.MathUtils.lerp(this.input.x, this.idleTarget.x, Math.min(this.idleTime * 0.5, 1));
+        const idleY = THREE.MathUtils.lerp(this.input.y, this.idleTarget.y, Math.min(this.idleTime * 0.5, 1));
+        return { x: idleX, y: idleY };
+      }
+
+      updateBreathing(deltaTime) {
+        this.breathPhase += deltaTime * 0.5;
+        const chest = this.vrm?.humanoid?.getNormalizedBoneNode('chest');
+        if (chest) chest.position.y = Math.sin(this.breathPhase) * 0.008;
+      }
+
+      updateBlink(deltaTime) {
+        this.blinkTimer += deltaTime;
+        if (this.blinkTimer >= this.nextBlink && this.vrm?.expressionManager) {
+          this.vrm.expressionManager.setValue('blink', 1);
+          setTimeout(() => this.vrm?.expressionManager?.setValue('blink', 0), 100);
+          this.blinkTimer = 0;
+          this.nextBlink = THREE.MathUtils.randFloat(2, 6);
+        }
+      }
+
+      updateLookAt(deltaTime, inputX, inputY) {
+        if (!this.vrm?.lookAt || !this.lookAtTarget) return;
+
+        this.eyeTarget.x = THREE.MathUtils.lerp(this.eyeTarget.x, inputX * 1.5, 0.2 * deltaTime * 60);
+        this.eyeTarget.y = THREE.MathUtils.lerp(this.eyeTarget.y, 1.6 + inputY * 0.5, 0.2 * deltaTime * 60);
+        this.lookAtTarget.position.lerp(this.eyeTarget, 0.2 * deltaTime * 60);
+
+        const headRotation = new THREE.Quaternion().setFromEuler(
+          new THREE.Euler(inputY * 0.2, inputX * 0.3, 0, 'XYZ')
+        );
+        this.headTarget.slerp(headRotation, 0.1 * deltaTime * 60);
+
+        this.vrm.lookAt.update(deltaTime);
+      }
+
+      update(deltaTime) {
+        if (!this.vrm) return;
+        const input = this.input.x === 0 && this.input.y === 0 ? this.updateIdleMovement(deltaTime) : this.input;
+        this.updateBreathing(deltaTime);
+        this.updateBlink(deltaTime);
+        this.updateLookAt(deltaTime, input.x, input.y);
+        this.vrm.update(deltaTime);
+      }
+
+      hideLoader() {
+        const loader = document.getElementById('loader');
+        loader.style.opacity = '0';
+        loader.style.transition = 'opacity 0.5s';
+        setTimeout(() => (loader.style.display = 'none'), 500);
+      }
+
+      onResize() {
+        this.camera.aspect = window.innerWidth / window.innerHeight;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+      }
+
+      animate() {
+        requestAnimationFrame(() => this.animate());
+        const deltaTime = this.clock.getDelta();
+        this.update(deltaTime);
+        this.renderer.render(this.scene, this.camera);
+      }
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => new AIAvatar().catch(console.error));
+    } else {
+      new AIAvatar().catch(console.error);
+    }
+  </script>
 </body>
 </html>
