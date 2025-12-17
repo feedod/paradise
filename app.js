@@ -4,7 +4,6 @@ import { VRMLoaderPlugin, VRMUtils } from 'https://esm.sh/@pixiv/three-vrm@3.4.4
 
 const TG = globalThis.Telegram?.WebApp;
 TG?.ready();
-TG?.expand();
 
 const DEVICE_MEMORY = navigator.deviceMemory || 1;
 const LOW_PERFORMANCE = DEVICE_MEMORY <= 2;
@@ -20,7 +19,9 @@ const CONFIG = Object.freeze({
   MESH_VERTEX_THRESHOLD: LOW_PERFORMANCE ? 12000 : 20000,
   IDLE_LOOK_INTERVAL: { min: 5, max: 12 },
   IDLE_LOOK_ANGLE: { x: 0.1, y: 0.2 },
-  EYE_TRACK_SPEED: LOW_PERFORMANCE ? 2 : 4
+  EYE_TRACK_SPEED: LOW_PERFORMANCE ? 2 : 4,
+  HEAD_TILT_FACTOR: 0.25,
+  EMOTION_CHANGE_INTERVAL: { min: 3, max: 8 }
 });
 
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
@@ -38,10 +39,12 @@ class EmotionController {
   arousal = 0;
   targetValence = 0;
   targetArousal = 0;
+
   setTarget(valence, arousal) {
     this.targetValence = clamp(valence, -1, 1);
     this.targetArousal = clamp(arousal, 0, 1);
   }
+
   update(dt) {
     this.valence = lerp(this.valence, this.targetValence, dt * CONFIG.EMOTION_LERP);
     this.arousal = lerp(this.arousal, this.targetArousal, dt * CONFIG.EMOTION_LERP);
@@ -58,34 +61,50 @@ class Renderer3D {
       CONFIG.CAMERA.far
     );
     this.camera.position.set(...CONFIG.CAMERA.position);
+
     this.renderer = new THREE.WebGLRenderer({
       antialias: !LOW_PERFORMANCE,
       alpha: true,
       powerPreference: 'high-performance'
     });
+
     this.renderer.setPixelRatio(CONFIG.PIXEL_RATIO);
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.NoToneMapping;
+
     Object.assign(this.renderer.domElement.style, {
-      position: 'fixed', inset: '0', width: '100%', height: '100%', display: 'block', touchAction: 'none'
+      position: 'fixed',
+      inset: '0',
+      width: '100%',
+      height: '100%',
+      display: 'block',
+      touchAction: 'none'
     });
+
     Object.assign(document.body.style, {
-      margin: '0', width: '100%', height: '100%', overflow: 'hidden', backgroundColor: '#000'
+      margin: '0',
+      width: '100%',
+      height: '100%',
+      overflow: 'hidden',
+      backgroundColor: '#000'
     });
+
     this.scene.add(new THREE.AmbientLight(0xffffff, 0.6));
     const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
     dirLight.position.set(1, 2, 1.5);
     this.scene.add(dirLight);
+
     document.body.appendChild(this.renderer.domElement);
     window.addEventListener('resize', () => this.resize(), { passive: true });
   }
+
   resize() {
     this.camera.aspect = window.innerWidth / window.innerHeight;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    TG?.expand();
   }
+
   render() {
     this.renderer.render(this.scene, this.camera);
   }
@@ -101,6 +120,7 @@ class VRMAvatar {
     this.idleLookTimer = 0;
     this.nextIdleLook = rand(CONFIG.IDLE_LOOK_INTERVAL.min, CONFIG.IDLE_LOOK_INTERVAL.max);
     this.eyeTarget = new THREE.Vector2(0, 0);
+    this.headTilt = new THREE.Vector2(0, 0);
   }
 
   async load(url) {
@@ -109,22 +129,29 @@ class VRMAvatar {
       loader.register(parser => new VRMLoaderPlugin(parser));
       const gltf = await loader.loadAsync(url, xhr => {
         if (TG && xhr.total) {
-          const percent = Math.floor((xhr.loaded / xhr.total) * 100);
+          let percent = Math.floor((xhr.loaded / xhr.total) * 100);
+          percent = clamp(percent, 0, 100);
           TG.MainButton.setText(`Загрузка ${percent}%`);
         }
       });
+
+      if (!gltf.userData.vrm) throw new Error('VRM не найден в gltf.userData.vrm');
+
       VRMUtils.removeUnnecessaryVertices(gltf.scene);
       VRMUtils.removeUnnecessaryJoints(gltf.scene);
+
       if (LOW_PERFORMANCE) {
         gltf.scene.traverse(obj => {
           if (obj.isMesh && obj.geometry && obj.geometry.attributes.position.count > CONFIG.MESH_VERTEX_THRESHOLD)
             obj.visible = false;
         });
       }
+
       this.vrm = gltf.userData.vrm;
       this.vrm.scene.scale.setScalar(LOW_PERFORMANCE ? 1.1 : 1.6);
       this.vrm.scene.position.set(0, -1.1, 0);
       this.scene.add(this.vrm.scene);
+
       if (TG) TG.MainButton.hide();
     } catch (e) {
       console.error('Ошибка загрузки VRM:', e);
@@ -149,8 +176,8 @@ class VRMAvatar {
     const head = this.vrm.humanoid.getNormalizedBoneNode('head');
     if (head) {
       const lerpFactor = LOW_PERFORMANCE ? 1.2 : 2.5;
-      head.rotation.y = lerp(head.rotation.y, 0, dt * lerpFactor);
-      head.rotation.x = lerp(head.rotation.x, 0, dt * lerpFactor);
+      head.rotation.y = lerp(head.rotation.y, this.headTilt.x, dt * lerpFactor);
+      head.rotation.x = lerp(head.rotation.x, this.headTilt.y, dt * lerpFactor);
     }
 
     this.blinkTimer += dt;
@@ -164,26 +191,23 @@ class VRMAvatar {
     this.idleLookTimer += dt;
     if (this.idleLookTimer > this.nextIdleLook) {
       if (head) {
-        head.rotation.y = (Math.random() - 0.5) * CONFIG.IDLE_LOOK_ANGLE.y;
-        head.rotation.x = (Math.random() - 0.5) * CONFIG.IDLE_LOOK_ANGLE.x;
+        head.rotation.y += (Math.random() - 0.5) * CONFIG.IDLE_LOOK_ANGLE.y;
+        head.rotation.x += (Math.random() - 0.5) * CONFIG.IDLE_LOOK_ANGLE.x;
         setTimeout(() => { head.rotation.x = 0; head.rotation.y = 0; }, 1000 + Math.random() * 2000);
       }
       this.idleLookTimer = 0;
       this.nextIdleLook = rand(CONFIG.IDLE_LOOK_INTERVAL.min, CONFIG.IDLE_LOOK_INTERVAL.max);
     }
 
-    // слежение глазами
-    if (head) {
-      const eyeL = this.vrm.humanoid.getNormalizedBoneNode('leftEye');
-      const eyeR = this.vrm.humanoid.getNormalizedBoneNode('rightEye');
-      if (eyeL && eyeR) {
-        const eyeX = clamp(this.eyeTarget.x, -0.5, 0.5);
-        const eyeY = clamp(this.eyeTarget.y, -0.5, 0.5);
-        eyeL.rotation.y = lerp(eyeL.rotation.y, eyeX, dt * CONFIG.EYE_TRACK_SPEED);
-        eyeL.rotation.x = lerp(eyeL.rotation.x, eyeY, dt * CONFIG.EYE_TRACK_SPEED);
-        eyeR.rotation.y = lerp(eyeR.rotation.y, eyeX, dt * CONFIG.EYE_TRACK_SPEED);
-        eyeR.rotation.x = lerp(eyeR.rotation.x, eyeY, dt * CONFIG.EYE_TRACK_SPEED);
-      }
+    const eyeL = this.vrm.humanoid.getNormalizedBoneNode('leftEye');
+    const eyeR = this.vrm.humanoid.getNormalizedBoneNode('rightEye');
+    if (eyeL && eyeR) {
+      const eyeX = clamp(this.eyeTarget.x, -0.5, 0.5);
+      const eyeY = clamp(this.eyeTarget.y, -0.5, 0.5);
+      eyeL.rotation.y = lerp(eyeL.rotation.y, eyeX, dt * CONFIG.EYE_TRACK_SPEED);
+      eyeL.rotation.x = lerp(eyeL.rotation.x, eyeY, dt * CONFIG.EYE_TRACK_SPEED);
+      eyeR.rotation.y = lerp(eyeR.rotation.y, eyeX, dt * CONFIG.EYE_TRACK_SPEED);
+      eyeR.rotation.x = lerp(eyeR.rotation.x, eyeY, dt * CONFIG.EYE_TRACK_SPEED);
     }
 
     this.setExpression('joy', clamp(emotion.valence, 0, 1));
@@ -200,29 +224,29 @@ class ParadiseAI {
     this.lastFrameTime = 0;
     this.adaptiveTimer = 0;
     this.fpsFactor = 1;
-    this.startX = null;
-    this.startY = null;
+    this.isTouching = false;
+    this.nextRandomEmotion = rand(CONFIG.EMOTION_CHANGE_INTERVAL.min, CONFIG.EMOTION_CHANGE_INTERVAL.max);
     this.initTouchControls();
   }
 
   initTouchControls() {
     document.addEventListener('touchstart', e => {
-      this.startX = e.touches[0].clientX;
-      this.startY = e.touches[0].clientY;
+      this.isTouching = true;
       this.updateEyeTarget(e.touches[0].clientX, e.touches[0].clientY);
     });
-
     document.addEventListener('touchmove', e => {
+      if (!this.isTouching) return;
       this.updateEyeTarget(e.touches[0].clientX, e.touches[0].clientY);
+      const nx = (e.touches[0].clientX / window.innerWidth - 0.5) * 2;
+      const ny = -(e.touches[0].clientY / window.innerHeight - 0.5) * 2;
+      this.avatar.headTilt.set(nx * CONFIG.HEAD_TILT_FACTOR, ny * CONFIG.HEAD_TILT_FACTOR);
+      this.emotion.setTarget(ny, Math.abs(nx));
     });
-
     document.addEventListener('touchend', e => {
-      const dx = e.changedTouches[0].clientX - this.startX;
-      const dy = e.changedTouches[0].clientY - this.startY;
-      if (Math.abs(dx) < 20 && Math.abs(dy) < 20) this.emotion.setTarget(0, 0);
-      else if (Math.abs(dy) > Math.abs(dx)) dy < 0 ? this.emotion.setTarget(1, 0.7) : this.emotion.setTarget(-1, 0.6);
-      else dx > 0 ? this.emotion.setTarget(0.5, 0.5) : this.emotion.setTarget(-0.5, 0.5);
+      this.isTouching = false;
       this.avatar.eyeTarget.set(0, 0);
+      this.avatar.headTilt.set(0, 0);
+      this.emotion.setTarget(0, 0);
     });
   }
 
@@ -230,6 +254,18 @@ class ParadiseAI {
     const nx = (x / window.innerWidth - 0.5) * 2;
     const ny = -(y / window.innerHeight - 0.5) * 2;
     this.avatar.eyeTarget.set(nx * 0.5, ny * 0.5);
+  }
+
+  randomEmotion() {
+    const emotions = [
+      { valence: 1, arousal: 0.5 },
+      { valence: -1, arousal: 0.5 },
+      { valence: 0, arousal: 1 },
+      { valence: 0, arousal: 0 },
+      { valence: 0.5, arousal: 0.8 }
+    ];
+    const choice = emotions[Math.floor(Math.random() * emotions.length)];
+    this.emotion.setTarget(choice.valence, choice.arousal);
   }
 
   async start() {
@@ -243,12 +279,22 @@ class ParadiseAI {
     let dt = (now - this.lastFrameTime) / 1000;
     if (dt < 1 / CONFIG.MAX_FPS) return;
     this.lastFrameTime = now;
+
     this.adaptiveTimer += dt;
     if (this.adaptiveTimer > 2) {
       const fps = 1 / dt;
       this.fpsFactor = LOW_PERFORMANCE && fps < 20 ? 0.6 : 1;
       this.adaptiveTimer = 0;
     }
+
+    if (!this.isTouching) {
+      this.nextRandomEmotion -= dt;
+      if (this.nextRandomEmotion <= 0) {
+        this.randomEmotion();
+        this.nextRandomEmotion = rand(CONFIG.EMOTION_CHANGE_INTERVAL.min, CONFIG.EMOTION_CHANGE_INTERVAL.max);
+      }
+    }
+
     this.emotion.update(dt * this.fpsFactor);
     this.avatar.update(dt * this.fpsFactor, this.emotion);
     this.renderer.render();
