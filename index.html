@@ -17,8 +17,8 @@
 <style>
 :root {
   --bg-color: #000;
-  --loader-size: 32px;
-  --loader-border: 3px;
+  --loader-size: 64px;
+  --loader-border: 6px;
 }
 
 html, body {
@@ -43,27 +43,27 @@ canvas {
   align-items: center;
   background-color: var(--bg-color);
   z-index: 100;
-  transition: opacity 0.5s ease;
 }
 
-.loader-spinner {
+#progress-circle {
   width: var(--loader-size);
   height: var(--loader-size);
-  border: var(--loader-border) solid rgba(255,255,255,0.1);
-  border-top-color: #fff;
   border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
+  background: conic-gradient(#fff 0deg, rgba(255,255,255,0.1) 0deg 360deg);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 0.8rem;
+  color: #fff;
+  font-weight: bold;
+  user-select: none;
 }
 </style>
 </head>
 <body>
 <main id="app">
   <div id="loader">
-    <div class="loader-spinner"></div>
+    <div id="progress-circle">0%</div>
   </div>
 </main>
 
@@ -140,7 +140,7 @@ class Renderer3D extends EventEmitter {
 }
 
 class VRMAvatar extends EventEmitter {
-  constructor(scene) {
+  constructor(scene, progressCallback) {
     super();
     this.scene = scene;
     this.vrm = null;
@@ -149,12 +149,26 @@ class VRMAvatar extends EventEmitter {
     this.breathOffset = Math.random() * Math.PI * 2;
     this.eyeTarget = new THREE.Vector2();
     this.headTilt = new THREE.Vector2();
+    this.progressCallback = progressCallback;
   }
 
   async load(url) {
     const loader = new GLTFLoader();
     loader.register(parser => new VRMLoaderPlugin(parser));
-    const gltf = await loader.loadAsync(url);
+
+    const gltf = await new Promise((resolve, reject) => {
+      loader.load(url,
+        gltf => resolve(gltf),
+        progress => {
+          if (this.progressCallback && progress.total) {
+            const percent = Math.min(Math.round((progress.loaded / progress.total) * 100), 100);
+            this.progressCallback(percent);
+          }
+        },
+        err => reject(err)
+      );
+    });
+
     if (!gltf.userData.vrm) throw new Error('VRM not found');
 
     VRMUtils.removeUnnecessaryVertices(gltf.scene);
@@ -164,6 +178,14 @@ class VRMAvatar extends EventEmitter {
     this.vrm = gltf.userData.vrm;
     this.vrm.scene.position.set(0, -1, 0);
     this.vrm.scene.rotation.y = Math.PI;
+
+    const bbox = new THREE.Box3().setFromObject(this.vrm.scene);
+    const size = new THREE.Vector3();
+    bbox.getSize(size);
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const scaleFactor = 2 / maxDim;
+    this.vrm.scene.scale.setScalar(scaleFactor);
+
     this.vrm.scene.traverse(obj => obj.frustumCulled = false);
     this.scene.add(this.vrm.scene);
     this.emit('loaded', this.vrm);
@@ -198,7 +220,11 @@ class VRMAvatar extends EventEmitter {
 class ParadiseAI {
   constructor(container) {
     this.renderer = new Renderer3D(container);
-    this.avatar = new VRMAvatar(this.renderer.scene);
+    const progressCircle = document.getElementById('progress-circle');
+    this.avatar = new VRMAvatar(this.renderer.scene, percent => {
+      progressCircle.textContent = percent + '%';
+      progressCircle.style.background = `conic-gradient(#fff ${percent * 3.6}deg, rgba(255,255,255,0.1) 0deg 360deg)`;
+    });
     this.clock = new THREE.Clock();
     this.lastFrame = 0;
     this.isTouching = false;
@@ -208,9 +234,7 @@ class ParadiseAI {
   }
 
   hideLoader() {
-    const loader = document.getElementById('loader');
-    loader.style.opacity = '0';
-    setTimeout(() => loader.remove(), 500);
+    document.getElementById('loader').remove();
   }
 
   initTouchControls() {
