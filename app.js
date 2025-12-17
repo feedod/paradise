@@ -10,7 +10,7 @@ const DEVICE_MEMORY = navigator.deviceMemory || 1;
 const LOW_PERFORMANCE = DEVICE_MEMORY <= 2;
 
 const CONFIG = Object.freeze({
-  MODEL_URL: 'https://pixiv.github.io/three-vrm/packages/three-vrm/examples/models/VRM1_Constraint_Twist_Sample.vrm',
+  MODEL_URL: 'https://raw.githack.com/pixiv/three-vrm/master/packages/three-vrm/examples/models/VRM1_Constraint_Twist_Sample.vrm',
   CAMERA: { fov: 35, near: 0.1, far: 100, position: [0, 1.45, 1.9] },
   PIXEL_RATIO: LOW_PERFORMANCE ? 1 : Math.min(window.devicePixelRatio || 1, 2),
   BREATH: { speed: LOW_PERFORMANCE ? 0.25 : 0.6, amp: LOW_PERFORMANCE ? 0.008 : 0.015 },
@@ -61,7 +61,6 @@ class Renderer3D {
     this.renderer.setPixelRatio(CONFIG.PIXEL_RATIO);
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.shadowMap.enabled = false;
     this.renderer.toneMapping = THREE.NoToneMapping;
 
     Object.assign(this.renderer.domElement.style, {
@@ -88,7 +87,6 @@ class Renderer3D {
     this.scene.add(dirLight);
 
     document.body.appendChild(this.renderer.domElement);
-
     window.addEventListener('resize', () => this.resize(), { passive: true });
   }
 
@@ -96,7 +94,7 @@ class Renderer3D {
     this.camera.aspect = window.innerWidth / window.innerHeight;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    if (TG) TG.expand();
+    TG?.expand();
   }
 
   render() {
@@ -121,7 +119,7 @@ class VRMAvatar {
       const blobUrl = URL.createObjectURL(blob);
 
       const loader = new GLTFLoader();
-      loader.register(p => new VRMLoaderPlugin(p));
+      loader.register(parser => new VRMLoaderPlugin(parser));
       const gltf = await loader.loadAsync(blobUrl);
 
       VRMUtils.removeUnnecessaryVertices(gltf.scene);
