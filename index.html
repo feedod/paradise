@@ -45,25 +45,25 @@ canvas {
   z-index: 100;
 }
 
-#progress-circle {
+#progress-spin {
   width: var(--loader-size);
   height: var(--loader-size);
+  border: var(--loader-border) solid rgba(255,255,255,0.1);
+  border-top-color: #fff;
   border-radius: 50%;
-  background: conic-gradient(#fff 0deg, rgba(255,255,255,0.1) 0deg 360deg);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  font-size: 0.8rem;
-  color: #fff;
-  font-weight: bold;
-  user-select: none;
+  transform: rotate(0deg);
+  animation: rotate-spin 0.1s linear infinite;
+}
+
+@keyframes rotate-spin {
+  to { transform: rotate(360deg); }
 }
 </style>
 </head>
 <body>
 <main id="app">
   <div id="loader">
-    <div id="progress-circle">0%</div>
+    <div id="progress-spin"></div>
   </div>
 </main>
 
@@ -140,7 +140,7 @@ class Renderer3D extends EventEmitter {
 }
 
 class VRMAvatar extends EventEmitter {
-  constructor(scene, progressCallback) {
+  constructor(scene, progressSpin) {
     super();
     this.scene = scene;
     this.vrm = null;
@@ -149,7 +149,7 @@ class VRMAvatar extends EventEmitter {
     this.breathOffset = Math.random() * Math.PI * 2;
     this.eyeTarget = new THREE.Vector2();
     this.headTilt = new THREE.Vector2();
-    this.progressCallback = progressCallback;
+    this.progressSpin = progressSpin;
   }
 
   async load(url) {
@@ -160,9 +160,9 @@ class VRMAvatar extends EventEmitter {
       loader.load(url,
         gltf => resolve(gltf),
         progress => {
-          if (this.progressCallback && progress.total) {
-            const percent = Math.min(Math.round((progress.loaded / progress.total) * 100), 100);
-            this.progressCallback(percent);
+          if (progress.total) {
+            const percent = Math.min((progress.loaded / progress.total) * 360, 360);
+            this.progressSpin.style.transform = `rotate(${percent}deg)`;
           }
         },
         err => reject(err)
@@ -176,6 +176,7 @@ class VRMAvatar extends EventEmitter {
     VRMUtils.combineMorphs(gltf.userData.vrm);
 
     this.vrm = gltf.userData.vrm;
+
     this.vrm.scene.position.set(0, -1, 0);
     this.vrm.scene.rotation.y = Math.PI;
 
@@ -220,11 +221,8 @@ class VRMAvatar extends EventEmitter {
 class ParadiseAI {
   constructor(container) {
     this.renderer = new Renderer3D(container);
-    const progressCircle = document.getElementById('progress-circle');
-    this.avatar = new VRMAvatar(this.renderer.scene, percent => {
-      progressCircle.textContent = percent + '%';
-      progressCircle.style.background = `conic-gradient(#fff ${percent * 3.6}deg, rgba(255,255,255,0.1) 0deg 360deg)`;
-    });
+    const progressSpin = document.getElementById('progress-spin');
+    this.avatar = new VRMAvatar(this.renderer.scene, progressSpin);
     this.clock = new THREE.Clock();
     this.lastFrame = 0;
     this.isTouching = false;
