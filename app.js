@@ -33,31 +33,76 @@ class EmotionController {
   arousal = 0;
   targetValence = 0;
   targetArousal = 0;
-  setTarget(v, a) { this.targetValence = clamp(v, -1, 1); this.targetArousal = clamp(a, 0, 1); }
-  update(dt) { this.valence = lerp(this.valence, this.targetValence, dt * CONFIG.EMOTION_LERP); this.arousal = lerp(this.arousal, this.targetArousal, dt * CONFIG.EMOTION_LERP); }
+
+  setTarget(v, a) {
+    this.targetValence = clamp(v, -1, 1);
+    this.targetArousal = clamp(a, 0, 1);
+  }
+
+  update(dt) {
+    this.valence = lerp(this.valence, this.targetValence, dt * CONFIG.EMOTION_LERP);
+    this.arousal = lerp(this.arousal, this.targetArousal, dt * CONFIG.EMOTION_LERP);
+  }
 }
 
 class Renderer3D {
   constructor() {
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(CONFIG.CAMERA.fov, window.innerWidth / window.innerHeight, CONFIG.CAMERA.near, CONFIG.CAMERA.far);
+    this.camera = new THREE.PerspectiveCamera(
+      CONFIG.CAMERA.fov,
+      window.innerWidth / window.innerHeight,
+      CONFIG.CAMERA.near,
+      CONFIG.CAMERA.far
+    );
     this.camera.position.set(...CONFIG.CAMERA.position);
-    this.renderer = new THREE.WebGLRenderer({ antialias: !LOW_PERFORMANCE, alpha: true, powerPreference: 'high-performance' });
+
+    this.renderer = new THREE.WebGLRenderer({
+      antialias: !LOW_PERFORMANCE,
+      alpha: true,
+      powerPreference: 'high-performance'
+    });
     this.renderer.setPixelRatio(CONFIG.PIXEL_RATIO);
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.NoToneMapping;
-    Object.assign(this.renderer.domElement.style, { position: 'fixed', inset: '0', width: '100%', height: '100%', display: 'block', touchAction: 'none' });
-    Object.assign(document.body.style, { margin: '0', width: '100%', height: '100%', overflow: 'hidden', backgroundColor: '#000' });
+
+    Object.assign(this.renderer.domElement.style, {
+      position: 'fixed',
+      inset: '0',
+      width: '100%',
+      height: '100%',
+      display: 'block',
+      touchAction: 'none'
+    });
+
+    Object.assign(document.body.style, {
+      margin: '0',
+      width: '100%',
+      height: '100%',
+      overflow: 'hidden',
+      backgroundColor: '#000'
+    });
+
     this.scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+
     const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
     dirLight.position.set(1, 2, 1.5);
     this.scene.add(dirLight);
+
     document.body.appendChild(this.renderer.domElement);
+
     window.addEventListener('resize', () => this.resize(), { passive: true });
   }
-  resize() { this.camera.aspect = window.innerWidth / window.innerHeight; this.camera.updateProjectionMatrix(); this.renderer.setSize(window.innerWidth, window.innerHeight); }
-  render() { this.renderer.render(this.scene, this.camera); }
+
+  resize() {
+    this.camera.aspect = window.innerWidth / window.innerHeight;
+    this.camera.updateProjectionMatrix();
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+
+  render() {
+    this.renderer.render(this.scene, this.camera);
+  }
 }
 
 class VRMAvatar {
@@ -75,125 +120,168 @@ class VRMAvatar {
 
   async load(url) {
     try {
-      const cacheName = 'paradiseai-vrm';
-      let vrmBlob;
-      if ('caches' in window) {
-        const cache = await caches.open(cacheName);
-        const cachedResponse = await cache.match(url);
-        if (cachedResponse) vrmBlob = await cachedResponse.blob();
-        else {
-          if (TG) { TG.MainButton.setText('Загрузка 0%'); TG.MainButton.show(); TG.MainButton.disable(); }
-          const response = await fetch(url);
-          if (!response.ok) throw new Error('Не удалось загрузить модель');
-          const reader = response.body.getReader();
-          const contentLength = +response.headers.get('Content-Length');
-          let received = 0, chunks = [];
-          while(true){
-            const {done, value} = await reader.read();
-            if(done) break;
-            chunks.push(value);
-            received += value.length;
-            if(TG && contentLength){
-              let percent = Math.floor((received / contentLength) * 100);
-              percent = clamp(percent,0,100);
-              TG.MainButton.setText(`Загрузка ${percent}%`);
-            }
-          }
-          vrmBlob = new Blob(chunks);
-          await cache.put(url,new Response(vrmBlob));
-          if(TG) TG.MainButton.hide();
-        }
-      } else {
-        const response = await fetch(url);
-        if (!response.ok) throw new Error('Не удалось загрузить модель');
-        vrmBlob = await response.blob();
+      if (TG) {
+        TG.MainButton.setText('Загрузка 0%');
+        TG.MainButton.show();
+        TG.MainButton.disable();
       }
 
-      const blobUrl = URL.createObjectURL(vrmBlob);
+      const cache = 'caches' in window ? await caches.open('paradiseai-vrm') : null;
+      let blob;
+      if (cache) {
+        const cached = await cache.match(url);
+        if (cached) blob = await cached.blob();
+      }
+
+      if (!blob) {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Не удалось загрузить модель');
+
+        const reader = response.body.getReader();
+        const contentLength = +response.headers.get('Content-Length');
+        let received = 0,
+          chunks = [];
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          received += value.length;
+
+          if (TG && contentLength) {
+            let p = Math.floor((received / contentLength) * 100);
+            p = clamp(p, 0, 100);
+            TG.MainButton.setText(`Загрузка ${p}%`);
+          }
+        }
+
+        blob = new Blob(chunks);
+        if (cache) await cache.put(url, new Response(blob));
+      }
+
+      const blobUrl = URL.createObjectURL(blob);
       const loader = new GLTFLoader();
       loader.register(parser => new VRMLoaderPlugin(parser));
       const gltf = await loader.loadAsync(blobUrl);
-      if (!gltf.scene) throw new Error('VRM сцена не найдена');
-      if (!gltf.userData.vrm) throw new Error('VRM объект не найден');
+
+      if (!gltf.userData.vrm) throw new Error('VRM не найден');
 
       VRMUtils.removeUnnecessaryVertices(gltf.scene);
       VRMUtils.removeUnnecessaryJoints(gltf.scene);
-      if (LOW_PERFORMANCE) gltf.scene.traverse(obj => { if(obj.isMesh && obj.geometry && obj.geometry.attributes.position.count > CONFIG.MESH_VERTEX_THRESHOLD) obj.visible=false; });
 
       this.vrm = gltf.userData.vrm;
-      this.vrm.scene.scale.setScalar(LOW_PERFORMANCE?1.1:1.6);
-      this.vrm.scene.position.set(0,-1.1,0);
+      this.vrm.scene.scale.setScalar(1.6);
+      this.vrm.scene.position.set(0, -1.1, 0);
       this.scene.add(this.vrm.scene);
-    } catch(e) {
-      console.error('Ошибка загрузки VRM:', e);
-      if(TG) { TG.MainButton.setText('Ошибка загрузки'); TG.MainButton.show(); TG.MainButton.disable(); }
-      TG?.showAlert('Не удалось загрузить аватар. Попробуйте позже.');
+
+      if (TG) TG.MainButton.hide();
+    } catch (e) {
+      console.error('Ошибка VRM', e);
+      if (TG) {
+        TG.MainButton.setText('Ошибка');
+        TG.MainButton.show();
+        TG.MainButton.disable();
+      }
+      TG?.showAlert('Не удалось загрузить аватар');
       TG?.close();
     }
   }
 
-  setExpression(name,value){ if(!this.vrm?.blendShapeProxy) return; this.vrm.blendShapeProxy.setValue(name,value); }
+  setExpression(name, value) {
+    if (!this.vrm?.blendShapeProxy) return;
+    this.vrm.blendShapeProxy.setValue(name, value);
+  }
 
-  update(dt,emotion){
-    if(!this.vrm) return;
+  update(dt) {
+    if (!this.vrm) return;
+
+    this.blinkTimer += dt;
+    if (this.blinkTimer > this.nextBlink) {
+      this.setExpression('blink', 1);
+      setTimeout(() => this.setExpression('blink', 0), 120);
+      this.blinkTimer = 0;
+      this.nextBlink = rand(CONFIG.BLINK_INTERVAL.min, CONFIG.BLINK_INTERVAL.max);
+    }
+
     const chest = this.vrm.humanoid.getNormalizedBoneNode('chest');
-    if(chest) chest.position.y = Math.sin(Date.now()*0.001*CONFIG.BREATH.speed+this.breathOffset)*CONFIG.BREATH.amp*(1+emotion.arousal);
+    if (chest)
+      chest.position.y =
+        Math.sin(Date.now() * 0.001 * CONFIG.BREATH.speed + this.breathOffset) *
+        CONFIG.BREATH.amp;
 
     const head = this.vrm.humanoid.getNormalizedBoneNode('head');
-    if(head){ const lerpFactor=LOW_PERFORMANCE?1.2:2.5; head.rotation.y=lerp(head.rotation.y,this.headTilt.x,dt*lerpFactor); head.rotation.x=lerp(head.rotation.x,this.headTilt.y,dt*lerpFactor); }
-
-    this.blinkTimer+=dt;
-    if(this.blinkTimer>this.nextBlink){ this.setExpression('blink',1); setTimeout(()=>this.setExpression('blink',0),LOW_PERFORMANCE?80:120); this.blinkTimer=0; this.nextBlink=rand(CONFIG.BLINK_INTERVAL.min,CONFIG.BLINK_INTERVAL.max); }
-
-    this.idleLookTimer+=dt;
-    if(this.idleLookTimer>this.nextIdleLook){ if(head){ head.rotation.y+=(Math.random()-0.5)*CONFIG.IDLE_LOOK_ANGLE.y; head.rotation.x+=(Math.random()-0.5)*CONFIG.IDLE_LOOK_ANGLE.x; setTimeout(()=>{head.rotation.x=0; head.rotation.y=0;},1000+Math.random()*2000);} this.idleLookTimer=0; this.nextIdleLook=rand(CONFIG.IDLE_LOOK_INTERVAL.min,CONFIG.IDLE_LOOK_INTERVAL.max); }
-
-    const eyeL = this.vrm.humanoid.getNormalizedBoneNode('leftEye');
-    const eyeR = this.vrm.humanoid.getNormalizedBoneNode('rightEye');
-    if(eyeL&&eyeR){ const eyeX=clamp(this.eyeTarget.x,-0.5,0.5); const eyeY=clamp(this.eyeTarget.y,-0.5,0.5); eyeL.rotation.y=lerp(eyeL.rotation.y,eyeX,dt*CONFIG.EYE_TRACK_SPEED); eyeL.rotation.x=lerp(eyeL.rotation.x,eyeY,dt*CONFIG.EYE_TRACK_SPEED); eyeR.rotation.y=lerp(eyeR.rotation.y,eyeX,dt*CONFIG.EYE_TRACK_SPEED); eyeR.rotation.x=lerp(eyeR.rotation.x,eyeY,dt*CONFIG.EYE_TRACK_SPEED); }
-
-    this.setExpression('joy',clamp(emotion.valence,0,1));
-    this.setExpression('sorrow',clamp(-emotion.valence,0,1));
+    if (head) {
+      const lerpFactor = LOW_PERFORMANCE ? 1.2 : 2.5;
+      head.rotation.y = lerp(head.rotation.y, this.headTilt.x, dt * lerpFactor);
+      head.rotation.x = lerp(head.rotation.x, this.headTilt.y, dt * lerpFactor);
+    }
   }
 }
 
 class ParadiseAI {
-  constructor(){
+  constructor() {
     this.renderer = new Renderer3D();
     this.avatar = new VRMAvatar(this.renderer.scene);
     this.emotion = new EmotionController();
     this.clock = new THREE.Clock();
-    this.lastFrameTime = 0;
-    this.adaptiveTimer = 0;
-    this.fpsFactor = 1;
+    this.lastFrame = 0;
     this.isTouching = false;
-    this.nextRandomEmotion = rand(CONFIG.EMOTION_CHANGE_INTERVAL.min,CONFIG.EMOTION_CHANGE_INTERVAL.max);
     this.initTouchControls();
   }
 
-  initTouchControls(){
-    document.addEventListener('touchstart',e=>{ this.isTouching=true; this.updateEyeTarget(e.touches[0].clientX,e.touches[0].clientY); });
-    document.addEventListener('touchmove',e=>{ if(!this.isTouching) return; this.updateEyeTarget(e.touches[0].clientX,e.touches[0].clientY); const nx=(e.touches[0].clientX/window.innerWidth-0.5)*2; const ny=-(e.touches[0].clientY/window.innerHeight-0.5)*2; this.avatar.headTilt.set(nx*CONFIG.HEAD_TILT_FACTOR,ny*CONFIG.HEAD_TILT_FACTOR); this.emotion.setTarget(ny,Math.abs(nx)); });
-    document.addEventListener('touchend',e=>{ this.isTouching=false; this.avatar.eyeTarget.set(0,0); this.avatar.headTilt.set(0,0); this.emotion.setTarget(0,0); });
+  async requestMic() {
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (e) {
+      TG?.showAlert('Доступ к микрофону необходим');
+      TG?.close();
+    }
   }
 
-  updateEyeTarget(x,y){ const nx=(x/window.innerWidth-0.5)*2; const ny=-(y/window.innerHeight-0.5)*2; this.avatar.eyeTarget.set(nx*0.5,ny*0.5); }
+  initTouchControls() {
+    document.addEventListener('touchstart', e => {
+      this.isTouching = true;
+      this.updateEyeTarget(e.touches[0].clientX, e.touches[0].clientY);
+    });
 
-  randomEmotion(){ const emotions=[{valence:1,arousal:0.5},{valence:-1,arousal:0.5},{valence:0,arousal:1},{valence:0,arousal:0},{valence:0.5,arousal:0.8}]; const choice=emotions[Math.floor(Math.random()*emotions.length)]; this.emotion.setTarget(choice.valence,choice.arousal); }
+    document.addEventListener('touchmove', e => {
+      if (!this.isTouching) return;
+      this.updateEyeTarget(e.touches[0].clientX, e.touches[0].clientY);
+      const nx = (e.touches[0].clientX / window.innerWidth - 0.5) * 2;
+      const ny = -(e.touches[0].clientY / window.innerHeight - 0.5) * 2;
+      this.avatar.headTilt.set(nx * CONFIG.HEAD_TILT_FACTOR, ny * CONFIG.HEAD_TILT_FACTOR);
+      this.emotion.setTarget(ny, Math.abs(nx));
+    });
 
-  async start(){ await this.avatar.load(CONFIG.MODEL_URL); this.loop(); }
+    document.addEventListener('touchend', e => {
+      this.isTouching = false;
+      this.avatar.eyeTarget.set(0, 0);
+      this.avatar.headTilt.set(0, 0);
+      this.emotion.setTarget(0, 0);
+    });
+  }
 
-  loop(){
-    requestAnimationFrame(()=>this.loop());
-    const now=performance.now();
-    let dt=(now-this.lastFrameTime)/1000;
-    if(dt<1/CONFIG.MAX_FPS) return;
-    this.lastFrameTime=now;
-    this.adaptiveTimer+=dt;
-    if(this.adaptiveTimer>2){ const fps=1/dt; this.fpsFactor=LOW_PERFORMANCE&&fps<20?0.6:1; this.adaptiveTimer=0; }
-    if(!this.isTouching){ this.nextRandomEmotion-=dt; if(this.nextRandomEmotion<=0){ this.randomEmotion(); this.nextRandomEmotion=rand(CONFIG.EMOTION_CHANGE_INTERVAL.min,CONFIG.EMOTION_CHANGE_INTERVAL.max); } }
-    this.emotion.update(dt*this.fpsFactor);
-    this.avatar.update(dt*this.fpsFactor,this.emotion);
+  updateEyeTarget(x, y) {
+    const nx = (x / window.innerWidth - 0.5) * 2;
+    const ny = -(y / window.innerHeight - 0.5) * 2;
+    this.avatar.eyeTarget.set(nx * 0.5, ny * 0.5);
+  }
+
+  async start() {
+    await this.requestMic();
+    await this.avatar.load(CONFIG.MODEL_URL);
+    this.loop();
+  }
+
+  loop() {
+    requestAnimationFrame(() => this.loop());
+    const now = performance.now();
+    let dt = (now - this.lastFrame) / 1000;
+    if (dt < 1 / CONFIG.MAX_FPS) return;
+    this.lastFrame = now;
+
+    this.emotion.update(dt);
+    this.avatar.update(dt);
     this.renderer.render();
   }
 }
