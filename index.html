@@ -12,12 +12,16 @@
             align-items: center;
             background-color: #000;
             font-family: Arial, sans-serif;
+            overflow: hidden;
         }
 
         h1 {
             font-weight: bold;
             color: #fff;
-            font-size: 2rem;
+            font-size: clamp(1.5rem, 10vw, 5rem); /* динамический размер текста */
+            text-align: center;
+            word-break: break-word;
+            margin: 0;
         }
     </style>
 </head>
