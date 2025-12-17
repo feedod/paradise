@@ -1,6 +1,9 @@
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js';
-import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/loaders/GLTFLoader.js';
-import { VRMLoaderPlugin, VRMUtils } from 'https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.4.4/lib/three-vrm.module.js';
+import * as THREE from 'https://esm.sh/three@0.169.0';
+import { GLTFLoader } from 'https://esm.sh/three@0.169.0/examples/jsm/loaders/GLTFLoader.js';
+import {
+  VRMLoaderPlugin,
+  VRMUtils
+} from 'https://esm.sh/@pixiv/three-vrm@3.4.4';
 
 const TG = globalThis.Telegram?.WebApp;
 TG?.ready();
