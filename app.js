@@ -1,232 +1,261 @@
-Telegram.WebApp.ready();
-Telegram.WebApp.expand();
-document.body.style.backgroundColor = Telegram.WebApp.themeParams.bg_color ?? 'transparent';
+import * as THREE from 'https://esm.sh/three@0.169.0';
+import { GLTFLoader } from 'https://esm.sh/three@0.169.0/examples/jsm/loaders/GLTFLoader.js';
+import { VRMLoaderPlugin } from 'https://esm.sh/@pixiv/three-vrm@2.0.14';
 
-// Динамические импорты через esm.sh
-const THREE = await import('https://esm.sh/three@0.169.0');
-const { GLTFLoader } = await import('https://esm.sh/three@0.169.0/examples/jsm/loaders/GLTFLoader.js');
-const { VRMLoaderPlugin } = await import('https://esm.sh/@pixiv/three-vrm@2.0.14');
+const TG = globalThis.Telegram?.WebApp ?? null;
+TG?.ready?.();
+TG?.expand?.();
+document.body.style.backgroundColor = TG?.themeParams?.bg_color ?? 'transparent';
 
-// Сцена
-const scene = new THREE.Scene();
-
-const camera = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.1, 100);
-camera.position.set(0, 1.4, 1.8);
-
-const renderer = new THREE.WebGLRenderer({
-  antialias: true,
-  alpha: true,
-  powerPreference: 'high-performance',
-});
-renderer.setPixelRatio(devicePixelRatio);
-renderer.setSize(innerWidth, innerHeight);
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-document.body.appendChild(renderer.domElement);
-
-// Свет
-const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
-directionalLight.position.set(1, 2, 1.5);
-scene.add(directionalLight);
-
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-scene.add(ambientLight);
-
-// Загрузка модели
-let vrm = null;
-let isSpeaking = false;
-
-const loader = new GLTFLoader();
-loader.register((parser) => new VRMLoaderPlugin(parser, { autoUpdateAnimation: true }));
-
-try {
-  const gltf = await loader.loadAsync('https://pixiv.github.io/three-vrm/models/AliciaSolid.vrm');
-  vrm = gltf.userData.vrm;
-
-  vrm.scene.scale.setScalar(1.6);
-  vrm.scene.position.set(0, -1.1, 0);
-
-  scene.add(vrm.scene);
-} catch (err) {
-  console.error('Ошибка загрузки модели:', err);
-}
-
-// Анимация
-const clock = new THREE.Clock();
-let blinkTimer = 0;
-let idleLookTimer = 0;
-
-function animate() {
-  requestAnimationFrame(animate);
-  const delta = clock.getDelta();
-
-  if (vrm) {
-    vrm.update(delta);
-
-    // Lip-sync
-    if (isSpeaking) {
-      const phase = performance.now() / 120;
-      const mouthValue = 0.3 + 0.7 * Math.abs(Math.sin(phase));
-      vrm.blendShapeProxy?.setValue('aa', mouthValue);
-      vrm.blendShapeProxy?.setValue('o', 0.3 * Math.abs(Math.sin(phase + Math.PI / 3)));
-    } else {
-      vrm.blendShapeProxy?.setValue('aa', 0);
-      vrm.blendShapeProxy?.setValue('o', 0);
-    }
-
-    // Моргание
-    if (!isSpeaking) {
-      blinkTimer += delta;
-      if (blinkTimer > 3 + Math.random() * 5) {
-        vrm.blendShapeProxy?.setValue('blink', 1);
-        setTimeout(() => vrm.blendShapeProxy?.setValue('blink', 0), 150);
-        blinkTimer = 0;
-      }
-    }
-
-    // Idle взгляд
-    idleLookTimer += delta;
-    if (idleLookTimer > 8 + Math.random() * 10) {
-      const head = vrm.humanoid?.getNormalizedBoneNode('head');
-      if (head) {
-        head.rotation.y = (Math.random() - 0.5) * 0.2;
-        head.rotation.x = (Math.random() - 0.5) * 0.1;
-        setTimeout(() => head.rotation.set(0, 0, 0), 1000 + Math.random() * 2000);
-      }
-      idleLookTimer = 0;
-    }
-  }
-
-  renderer.render(scene, camera);
-}
-animate();
-
-// Resize
-addEventListener('resize', () => {
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
+const CONFIG = Object.freeze({
+  PROJECT: 'ParadiseAI',
+  MODEL_URL: 'https://pixiv.github.io/three-vrm/models/AliciaSolid.vrm',
+  LANG: 'ru-RU',
+  WAKE_WORD: 'айри',
+  CAMERA: { fov: 35, near: 0.1, far: 100, pos: [0, 1.4, 1.8] },
+  RENDER: { maxPixelRatio: 1.5 },
+  LIPSYNC: { gain: 4.5, smooth: 0.14 },
+  BLINK: { min: 3, max: 7 },
 });
 
-// Эмоции
-function resetExpressions() {
-  if (!vrm?.blendShapeProxy) return;
-  vrm.expressionManager?.expressions.forEach((exp) => (exp.weight = 0));
-}
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const rand = (a, b) => a + Math.random() * (b - a);
 
-function setExpression(name) {
-  resetExpressions();
-  if (!vrm) return;
+class RendererCore {
+  constructor() {
+    this.scene = new THREE.Scene();
+    this.camera = new THREE.PerspectiveCamera(
+      CONFIG.CAMERA.fov,
+      innerWidth / innerHeight,
+      CONFIG.CAMERA.near,
+      CONFIG.CAMERA.far,
+    );
+    this.camera.position.set(...CONFIG.CAMERA.pos);
 
-  const mapping = {
-    happy: 'joy',
-    angry: 'angry',
-    sad: 'sorrow',
-    surprised: 'surprised',
-    listening: 'neutral',
-    neutral: null,
-  };
+    this.renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      alpha: true,
+      powerPreference: 'high-performance',
+    });
 
-  const preset = mapping[name];
-  if (preset) {
-    vrm.blendShapeProxy?.setValue(preset, 1);
+    this.renderer.setPixelRatio(
+      clamp(devicePixelRatio || 1, 1, CONFIG.RENDER.maxPixelRatio),
+    );
+    this.renderer.setSize(innerWidth, innerHeight);
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+    document.body.append(this.renderer.domElement);
+
+    this.scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const d = new THREE.DirectionalLight(0xffffff, 1.2);
+    d.position.set(1, 2, 1.5);
+    this.scene.add(d);
+
+    addEventListener('resize', () => this.resize(), { passive: true });
+  }
+
+  resize() {
+    this.camera.aspect = innerWidth / innerHeight;
+    this.camera.updateProjectionMatrix();
+    this.renderer.setSize(innerWidth, innerHeight);
+  }
+
+  render() {
+    this.renderer.render(this.scene, this.camera);
   }
 }
 
-// Speech Recognition
-const Recognition = globalThis.SpeechRecognition || globalThis.webkitSpeechRecognition;
-if (!Recognition) {
-  console.error('SpeechRecognition не поддерживается');
-  Telegram.WebApp.showAlert('Голосовой ввод не поддерживается в этом браузере');
-}
+class VRMAvatar {
+  constructor(scene) {
+    this.scene = scene;
+    this.vrm = null;
+    this.blinkTimer = 0;
+    this.nextBlink = rand(CONFIG.BLINK.min, CONFIG.BLINK.max);
+  }
 
-const recognition = new Recognition();
-recognition.lang = 'ru-RU';
-recognition.continuous = true;
-recognition.interimResults = true;
+  async load(url) {
+    const loader = new GLTFLoader();
+    loader.register((p) => new VRMLoaderPlugin(p));
+    const gltf = await loader.loadAsync(url);
+    this.vrm = gltf.userData.vrm;
+    this.vrm.scene.scale.setScalar(1.6);
+    this.vrm.scene.position.set(0, -1.1, 0);
+    this.scene.add(this.vrm.scene);
+  }
 
-let isListening = false;
-const wakeWord = 'айри';
+  update(dt, speaking) {
+    if (!this.vrm) return;
+    this.vrm.update(dt);
+    if (!speaking) this.blink(dt);
+  }
 
-// Запуск по любому тапу/клику (повторные попытки возможны)
-document.addEventListener('click', async () => {
-  if (isListening) return;
-
-  try {
-    await recognition.start();
-    isListening = true;
-    setExpression('listening');
-    Telegram.WebApp.HapticFeedback.impactOccurred('light');
-  } catch (err) {
-    console.error('Ошибка запуска микрофона:', err);
-    if (err.name === 'NotAllowedError' || err.message?.includes('permission')) {
-      Telegram.WebApp.showAlert('Разреши доступ к микрофону в настройках браузера');
+  blink(dt) {
+    this.blinkTimer += dt;
+    if (this.blinkTimer >= this.nextBlink) {
+      this.setBlend('blink', 1);
+      setTimeout(() => this.setBlend('blink', 0), 120);
+      this.blinkTimer = 0;
+      this.nextBlink = rand(CONFIG.BLINK.min, CONFIG.BLINK.max);
     }
   }
-});
 
-// Speech Synthesis
-const synth = globalThis.speechSynthesis;
+  setBlend(name, value) {
+    this.vrm?.blendShapeProxy?.setValue(name, value);
+  }
 
-function speak(text) {
-  synth.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = 'ru-RU';
-  utterance.pitch = 1.6;
-  utterance.rate = 0.95;
-
-  const voices = synth.getVoices();
-  const preferred = voices.find(v => v.lang.startsWith('ru') && /female|жен|alice|milena/i.test(v.name));
-  if (preferred) utterance.voice = preferred;
-
-  utterance.onstart = () => {
-    isSpeaking = true;
-    setExpression('happy');
-  };
-
-  utterance.onend = utterance.onerror = () => {
-    isSpeaking = false;
-    setExpression('neutral');
-  };
-
-  synth.speak(utterance);
+  setExpression(name) {
+    if (!this.vrm?.expressionManager) return;
+    this.vrm.expressionManager.expressions.forEach((e) => (e.weight = 0));
+    if (name) this.setBlend(name, 1);
+  }
 }
 
-// Ответы
-function getResponse(transcript) {
-  const lower = transcript.toLowerCase();
+class AudioController {
+  constructor() {
+    const AC = globalThis.AudioContext || globalThis.webkitAudioContext;
+    this.ctx = AC ? new AC({ latencyHint: 'interactive' }) : null;
+    this.analyser = null;
+    this.data = null;
+    this.level = 0;
+  }
 
-  if (lower.includes('привет') || lower.includes('здравствуй')) return 'Приветик~ ♥ Так рада тебя слышать!';
-  if (lower.includes('как дела') || lower.includes('как ты')) return 'У меня всё супер! А у тебя как, милый?';
-  if (lower.includes('люблю') || lower.includes('обожаю')) return 'Ой, я тоже тебя очень-очень люблю~ ♥';
-  if (lower.includes('грустно') || lower.includes('плохо')) return 'Не грусти… Я здесь. Расскажи мне всё.';
-  if (lower.includes('злой') || lower.includes('сердит')) return 'Успокойся~ Давай лучше обнимемся!';
-  if (lower.includes('удив') || lower.includes('вау')) return 'Вау! Правда? Это потрясающе!';
+  async initMic() {
+    if (!this.ctx || !navigator.mediaDevices) return;
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const src = this.ctx.createMediaStreamSource(stream);
+    this.analyser = this.ctx.createAnalyser();
+    this.analyser.fftSize = 2048;
+    this.data = new Uint8Array(this.analyser.fftSize);
+    src.connect(this.analyser);
+  }
 
-  return 'Хм… Очень интересно! Расскажи ещё~';
+  update() {
+    if (!this.analyser) return 0;
+    this.analyser.getByteTimeDomainData(this.data);
+    let sum = 0;
+    for (let i = 0; i < this.data.length; i++) {
+      const v = (this.data[i] - 128) / 128;
+      sum += v * v;
+    }
+    const rms = Math.sqrt(sum / this.data.length);
+    this.level =
+      this.level * (1 - CONFIG.LIPSYNC.smooth) +
+      rms * CONFIG.LIPSYNC.smooth;
+    return clamp(this.level * CONFIG.LIPSYNC.gain, 0, 1);
+  }
 }
 
-recognition.onresult = (event) => {
-  let transcript = '';
-  for (let i = event.resultIndex; i < event.results.length; i++) {
-    transcript += event.results[i][0].transcript;
+class SpeechController {
+  constructor(onFinal) {
+    const SR =
+      globalThis.SpeechRecognition || globalThis.webkitSpeechRecognition;
+    this.recognition = SR ? new SR() : null;
+    this.listening = false;
+    this.onFinal = onFinal;
+
+    if (this.recognition) {
+      this.recognition.lang = CONFIG.LANG;
+      this.recognition.continuous = true;
+      this.recognition.interimResults = true;
+
+      this.recognition.onresult = (e) => this.handleResult(e);
+      this.recognition.onend = () => {
+        if (this.listening) this.recognition.start().catch(() => {});
+      };
+    }
   }
 
-  const lastResult = event.results[event.results.length - 1];
-  if (lastResult.isFinal && transcript.toLowerCase().includes(wakeWord)) {
-    const response = getResponse(transcript);
-    speak(response);
+  start() {
+    if (!this.recognition || this.listening) return;
+    this.listening = true;
+    this.recognition.start();
   }
-};
 
-recognition.onerror = (event) => {
-  console.error('Ошибка STT:', event.error);
-  if (event.error === 'not-allowed') {
-    Telegram.WebApp.showAlert('Доступ к микрофону заблокирован. Разреши в настройках');
+  handleResult(e) {
+    let text = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      text += e.results[i][0].transcript;
+    }
+    const last = e.results[e.results.length - 1];
+    if (last.isFinal && text.toLowerCase().includes(CONFIG.WAKE_WORD)) {
+      this.onFinal(text);
+    }
   }
-};
+}
 
-recognition.onend = () => {
-  if (isListening) {
-    recognition.start().catch(() => {});
+class TTSController {
+  constructor(onStart, onEnd) {
+    this.synth = globalThis.speechSynthesis;
+    this.onStart = onStart;
+    this.onEnd = onEnd;
   }
-};
+
+  speak(text) {
+    if (!this.synth) return;
+    this.synth.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = CONFIG.LANG;
+    u.pitch = 1.6;
+    u.rate = 0.95;
+    u.onstart = this.onStart;
+    u.onend = this.onEnd;
+    u.onerror = this.onEnd;
+    this.synth.speak(u);
+  }
+}
+
+class ParadiseAI {
+  constructor() {
+    this.renderer = new RendererCore();
+    this.avatar = new VRMAvatar(this.renderer.scene);
+    this.audio = new AudioController();
+    this.speaking = false;
+
+    this.tts = new TTSController(
+      () => {
+        this.speaking = true;
+        this.avatar.setExpression('joy');
+      },
+      () => {
+        this.speaking = false;
+        this.avatar.setExpression(null);
+      },
+    );
+
+    this.stt = new SpeechController((text) =>
+      this.tts.speak(this.reply(text)),
+    );
+
+    this.clock = new THREE.Clock();
+  }
+
+  async init() {
+    await this.avatar.load(CONFIG.MODEL_URL);
+    addEventListener('click', async () => {
+      await this.audio.initMic();
+      this.stt.start();
+      TG?.HapticFeedback?.impactOccurred('light');
+    });
+    this.loop();
+  }
+
+  reply(text) {
+    const t = text.toLowerCase();
+    if (t.includes('привет')) return 'Приветик~ ♥';
+    if (t.includes('как дела')) return 'У меня всё отлично!';
+    if (t.includes('люблю')) return 'Я тоже тебя люблю~ ♥';
+    return 'Ммм… расскажи ещё~';
+  }
+
+  loop() {
+    requestAnimationFrame(() => this.loop());
+    const dt = this.clock.getDelta();
+    const mouth = this.audio.update();
+    this.avatar.setBlend('aa', mouth);
+    this.avatar.update(dt, this.speaking);
+    this.renderer.render();
+  }
+}
+
+const app = new ParadiseAI();
+await app.init();
