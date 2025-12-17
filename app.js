@@ -1,9 +1,6 @@
 import * as THREE from 'https://esm.sh/three@0.169.0';
 import { GLTFLoader } from 'https://esm.sh/three@0.169.0/examples/jsm/loaders/GLTFLoader.js';
-import {
-  VRMLoaderPlugin,
-  VRMUtils
-} from 'https://esm.sh/@pixiv/three-vrm@3.4.4';
+import { VRMLoaderPlugin, VRMUtils } from 'https://esm.sh/@pixiv/three-vrm@3.4.4';
 
 const TG = globalThis.Telegram?.WebApp;
 TG?.ready();
