@@ -24,14 +24,14 @@
     <h1 id="text"></h1>
 
     <script>
-        const tg = window.Telegram?.WebApp;
+        const tg = window.Telegram.WebApp;
         const textElement = document.getElementById('text');
         const userLang = navigator.language || 'en';
         textElement.textContent = userLang.startsWith('ru') ? 'Скоро' : 'Soon';
 
         const updateText = () => {
-            const width = tg?.viewport?.width || window.innerWidth;
-            const height = tg?.viewport?.height || window.innerHeight;
+            const width = tg.viewport.width || window.innerWidth;
+            const height = tg.viewport.height || window.innerHeight;
             const fontSize = Math.min(width / 5, height / 3);
             textElement.style.fontSize = fontSize + 'px';
             const rect = textElement.getBoundingClientRect();
