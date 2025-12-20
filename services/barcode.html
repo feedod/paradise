@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Генератор штрихкодов</title>
+  <!-- Подключение минималистичных стилей Pico.css -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <style>
+    /**
+     * Стили для адаптивного и чистого дизайна
+     */
+
+    /* Адаптивная ширина выпадающего списка */
+    select {
+      width: fit-content;
+    }
+
+    /* Кнопка на всю ширину контейнера */
+    button {
+      width: 100%;
+    }
+
+    /* Стили для изображения штрихкода */
+    img {
+      width: 100%;
+      height: 100px;
+      display: block;
+      margin-top: 1rem;
+      object-fit: contain;
+    }
+  </style>
+</head>
+<body>
+  <main class="container" x-data="barcodeApp">
+    <!-- Заголовок приложения -->
+    <h1>Генератор штрихкодов</h1>
+
+    <!-- Форма для ввода данных и выбора типа штрихкода -->
+    <form @submit.prevent="generateBarcode">
+      <fieldset role="group">
+        <!-- Поле ввода данных штрихкода -->
+        <input
+          type="text"
+          x-model.trim="input"
+          placeholder="Введите данные"
+          autocomplete="off"
+          required
+          aria-label="Ввод данных для генерации штрихкода"
+        >
+
+        <!-- Выбор типа штрихкода -->
+        <select x-model="type" aria-label="Выбор типа штрихкода">
+          <option value="ean13">EAN-13</option>
+          <option value="ean8">EAN-8</option>
+        </select>
+      </fieldset>
+
+      <!-- Кнопка генерации штрихкода -->
+      <button type="submit">Сформировать</button>
+    </form>
+
+    <!-- Отображение сгенерированного штрихкода -->
+    <template x-if="barcode">
+      <img
+        :src="barcode"
+        alt="Сгенерированный штрихкод"
+        loading="lazy"
+        @error="handleImageError"
+      >
+    </template>
+  </main>
+
+  <!-- Подключение Alpine.js для интерактивности -->
+  <script src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js" defer></script>
+  <script>
+    /**
+     * Инициализация компонента Alpine.js для генерации штрихкодов
+     * @module barcodeApp
+     */
+    document.addEventListener('alpine:init', () => {
+      Alpine.data('barcodeApp', () => ({
+        /**
+         * Входные данные для штрихкода
+         * @type {string}
+         */
+        input: '',
+
+        /**
+         * Выбранный тип штрихкода
+         * @type {string}
+         */
+        type: 'ean13',
+
+        /**
+         * URL сгенерированного штрихкода
+         * @type {string}
+         */
+        barcode: '',
+
+        /**
+         * Генерирует штрихкод на основе введенных данных и выбранного типа
+         * @returns {void}
+         */
+        generateBarcode() {
+          const maxWidth = 800; // Максимальная ширина изображения
+          const width = Math.min(window.innerWidth, maxWidth); // Адаптивная ширина
+          const height = 100; // Фиксированная высота изображения
+          const encodedData = encodeURIComponent(this.input); // Кодирование данных для URL
+
+          // Формирование URL для API штрихкода
+          this.barcode = `https://quickchart.io/barcode?type=${this.type}&text=${encodedData}&width=${width}&height=${height}&format=png`;
+        },
+
+        /**
+         * Обработчик ошибки загрузки изображения штрихкода
+         * @returns {void}
+         */
+        handleImageError() {
+          this.barcode = ''; // Сброс URL изображения
+          alert('Ошибка при загрузке штрихкода. Проверьте данные и тип штрихкода.');
+        }
+      }));
+    });
+  </script>
+</body>
+</html>
