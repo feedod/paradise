@@ -1,42 +1,23 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Telegram WebApp</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            padding: 20px;
-            text-align: center;
-        }
-        button {
-            padding: 10px 20px;
-            font-size: 18px;
-            cursor: pointer;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <title>Assistant UI Test</title>
 </head>
 <body>
-    <h1>Добро пожаловать в Telegram Web App!</h1>
-    <p>Нажмите кнопку ниже для взаимодействия.</p>
-    <button onclick="sendData()">Отправить данные в Telegram</button>
+  <div id="root"></div>
 
-    <script>
-        // Инициализация Telegram Web App
-        const tg = window.Telegram.WebApp;
-        tg.expand(); // Раскрывает Web App на весь экран
+  <!-- React via CDN (ESM) -->
+  <script type="module">
+    import React from 'https://esm.sh/react@18';
+    import ReactDOM from 'https://esm.sh/react-dom@18';
 
-        // Отправка данных в Telegram
-        function sendData() {
-            tg.sendData(JSON.stringify({ message: "Привет из Web App!" }));
-        }
+    // Attempt to import assistant-ui (adjust version/path if needed)
+    import { Thread } from 'https://cdn.jsdelivr.net/npm/@assistant-ui/react@latest/dist/index.js';
 
-        // Закрытие Web App
-        function closeApp() {
-            tg.close();
-        }
-    </script>
+    // Render example
+    const App = () => <Thread />;  // Basic component
+    ReactDOM.render(<App />, document.getElementById('root'));
+  </script>
 </body>
 </html>
